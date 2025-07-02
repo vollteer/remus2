@@ -1,1015 +1,1017 @@
+// src/routes/requirements/[id]/index.tsx
 import { component$, useSignal, useTask$, $ } from '@builder.io/qwik';
-import { Link, useLocation } from '@builder.io/qwik-city';
+import { useParams, Link } from '@builder.io/qwik-city';
+import { MockApiService } from '../../../services/mock-service';
 
-// Types
-interface RequirementDetail {
-id: string;
-requirementNumber: string;
-title: string;
-description: string;
-requirementType: string;
-priority: 'Low' | 'Medium' | 'High' | 'Urgent';
-status: 'Draft' | 'Submitted' | 'InProgress' | 'Completed' | 'Rejected' | 'OnHold';
-requestedBy: string;
-businessOwner?: string;
-technicalOwner?: string;
-department?: string;
-costCenter?: string;
-
-// Financial
-estimatedCost?: number;
-approvedBudget?: number;
-actualCost?: number;
-currency: string;
-
-// Dates
-requestedDate: string;
-requiredByDate?: string;
-startDate?: string;
-completedDate?: string;
-
-// Workflow
-currentWorkflowStep?: string;
-currentAssignee?: string;
-currentStepDueDate?: string;
-workflowName?: string;
-workflowInstanceId?: string;
-
-// Form & Data
-formName?: string;
-formData?: Record<string, any>;
-
-// Compliance
-hasPersonalData: boolean;
-securityClassification: string;
-complianceFlags?: string[];
-
-// Metadata
-createdAt: string;
-modifiedAt: string;
-createdBy: string;
-modifiedBy?: string;
+interface Requirement {
+  id: string;
+  requirementNumber: string;
+  title: string;
+  description: string;
+  requirementType: string;
+  priority: 'Low' | 'Medium' | 'High' | 'Urgent';
+  status: 'Draft' | 'Submitted' | 'InProgress' | 'Completed' | 'Rejected' | 'OnHold';
+  requestedBy: string;
+  businessOwner?: string;
+  technicalOwner?: string;
+  department?: string;
+  estimatedCost?: number;
+  approvedBudget?: number;
+  actualCost?: number;
+  currency: string;
+  requestedDate: string;
+  requiredByDate?: string;
+  startDate?: string;
+  completedDate?: string;
+  currentWorkflowStep?: string;
+  currentAssignee?: string;
+  currentStepDueDate?: string;
+  attachmentCount: number;
+  commentCount: number;
+  workflowName?: string;
+  formName?: string;
+  hasPersonalData: boolean;
+  securityClassification: string;
+  formData?: any;
 }
 
 interface WorkflowStep {
-id: string;
-title: string;
-status: 'Completed' | 'Current' | 'Pending' | 'Skipped';
-assignedTo?: string;
-startDate?: string;
-completedDate?: string;
-dueDate?: string;
-estimatedDays: number;
-actualDays?: number;
-comments?: string;
+  id: string;
+  name: string;
+  order: number;
+  status: 'completed' | 'current' | 'pending' | 'skipped';
+  assignedTo?: string;
+  completedAt?: string;
+  dueDate?: string;
+  comments?: string;
 }
 
 interface RequirementComment {
-id: string;
-comment: string;
-commentType: 'General' | 'StatusChange' | 'Approval' | 'Technical';
-createdBy: string;
-createdAt: string;
-isInternal: boolean;
-workflowStep?: string;
-previousStatus?: string;
-newStatus?: string;
+  id: string;
+  comment: string;
+  commentType: 'General' | 'StatusChange' | 'Approval' | 'Technical';
+  workflowStep?: string;
+  createdBy: string;
+  createdAt: string;
+  isInternal: boolean;
 }
 
 interface RequirementAttachment {
-id: string;
-fileName: string;
-originalFileName: string;
-fileSize: number;
-contentType: string;
-category: string;
-description?: string;
-uploadedBy: string;
-createdAt: string;
-isPublic: boolean;
+  id: string;
+  fileName: string;
+  originalFileName: string;
+  fileSize: number;
+  description?: string;
+  category: string;
+  uploadedBy: string;
+  createdAt: string;
 }
-
-// Mock data
-const mockRequirement: RequirementDetail = {
-id: 'req-1',
-requirementNumber: 'REQ-2025-001',
-title: 'Neue CRM-Integration',
-description: 'Integration des bestehenden CRM-Systems mit der Anforderungsverwaltung für bessere Datenübertragung und automatisierte Prozesse. Das System soll bidirektionale Synchronisation unterstützen und Echtzeit-Updates ermöglichen.',
-requirementType: 'Großanforderung',
-priority: 'High',
-status: 'InProgress',
-requestedBy: 'max.mustermann@company.com',
-businessOwner: 'Anna Schmidt',
-technicalOwner: 'Thomas Wagner',
-department: 'IT',
-costCenter: 'CC-IT-001',
-estimatedCost: 25000,
-approvedBudget: 30000,
-actualCost: 18500,
-currency: 'EUR',
-requestedDate: '2025-01-15',
-requiredByDate: '2025-12-31',
-startDate: '2025-02-01',
-currentWorkflowStep: 'Umsetzung',
-currentAssignee: 'dev.team@company.com',
-currentStepDueDate: '2025-08-15',
-workflowName: 'Großanforderung Enhanced v2.1',
-workflowInstanceId: 'wf-inst-001',
-formName: 'Großanforderung Form v2.1',
-formData: {
-shortDescription: 'CRM Integration mit Salesforce',
-technicalDescription: 'REST API Integration mit OAuth 2.0',
-businessJustification: 'Verbesserung der Kundenbetreuung und Effizienzsteigerung',
-riskAssessment: 'Mittleres Risiko - bestehende API verfügbar',
-targetUsers: 'Sales Team, Customer Service',
-expectedBenefits: 'Reduzierung manueller Dateneingabe um 70%'
-},
-hasPersonalData: true,
-securityClassification: 'Confidential',
-complianceFlags: ['DSGVO', 'Security Review Required'],
-createdAt: '2025-01-15T09:00:00Z',
-modifiedAt: '2025-06-28T14:30:00Z',
-createdBy: 'max.mustermann@company.com',
-modifiedBy: 'dev.team@company.com'
-};
-
-const mockWorkflowSteps: WorkflowStep[] = [
-{
-id: 'step-1',
-title: 'Antrag erstellen',
-status: 'Completed',
-assignedTo: 'max.mustermann@company.com',
-startDate: '2025-01-15',
-completedDate: '2025-01-16',
-estimatedDays: 1,
-actualDays: 1,
-comments: 'Antrag vollständig ausgefüllt und eingereicht'
-},
-{
-id: 'step-2',
-title: 'Grobanalyse',
-status: 'Completed',
-assignedTo: 'analysis.team@company.com',
-startDate: '2025-01-17',
-completedDate: '2025-01-25',
-estimatedDays: 5,
-actualDays: 8,
-comments: 'Zusätzliche API-Dokumentation erforderlich, daher Verzögerung'
-},
-{
-id: 'step-3',
-title: 'Feinkonzept',
-status: 'Completed',
-assignedTo: 'thomas.wagner@company.com',
-startDate: '2025-01-26',
-completedDate: '2025-02-10',
-estimatedDays: 10,
-actualDays: 15,
-comments: 'Detaillierte Architektur erstellt, Security Review eingebunden'
-},
-{
-id: 'step-4',
-title: 'Freigabe',
-status: 'Completed',
-assignedTo: 'manager@company.com',
-startDate: '2025-02-11',
-completedDate: '2025-02-12',
-estimatedDays: 2,
-actualDays: 1,
-comments: 'Budget und Scope genehmigt'
-},
-{
-id: 'step-5',
-title: 'Umsetzung',
-status: 'Current',
-assignedTo: 'dev.team@company.com',
-startDate: '2025-02-13',
-dueDate: '2025-08-15',
-estimatedDays: 120,
-comments: 'Entwicklung läuft planmäßig, API Tests erfolgreich'
-},
-{
-id: 'step-6',
-title: 'Test',
-status: 'Pending',
-estimatedDays: 15
-},
-{
-id: 'step-7',
-title: 'Abnahme',
-status: 'Pending',
-estimatedDays: 5
-}
-];
-
-const mockComments: RequirementComment[] = [
-{
-id: 'comment-1',
-comment: 'API-Tests erfolgreich abgeschlossen. Integration funktioniert wie erwartet.',
-commentType: 'Technical',
-createdBy: 'dev.team@company.com',
-createdAt: '2025-06-28T14:30:00Z',
-isInternal: false,
-workflowStep: 'Umsetzung'
-},
-{
-id: 'comment-2',
-comment: 'Security Review abgeschlossen. Keine kritischen Findings.',
-commentType: 'Approval',
-createdBy: 'security@company.com',
-createdAt: '2025-06-25T10:15:00Z',
-isInternal: true,
-workflowStep: 'Umsetzung'
-},
-{
-id: 'comment-3',
-comment: 'Status geändert von "Feinkonzept" zu "Freigabe"',
-commentType: 'StatusChange',
-createdBy: 'thomas.wagner@company.com',
-createdAt: '2025-02-10T16:45:00Z',
-isInternal: false,
-previousStatus: 'Feinkonzept',
-newStatus: 'Freigabe',
-workflowStep: 'Feinkonzept'
-}
-];
-
-const mockAttachments: RequirementAttachment[] = [
-{
-id: 'att-1',
-fileName: 'crm-integration-spec.pdf',
-originalFileName: 'CRM Integration Specification v2.1.pdf',
-fileSize: 2048576,
-contentType: 'application/pdf',
-category: 'Specification',
-description: 'Technische Spezifikation der CRM-Integration',
-uploadedBy: 'thomas.wagner@company.com',
-createdAt: '2025-02-10T09:30:00Z',
-isPublic: false
-},
-{
-id: 'att-2',
-fileName: 'api-documentation.pdf',
-originalFileName: 'Salesforce API Documentation.pdf',
-fileSize: 5242880,
-contentType: 'application/pdf',
-category: 'Documentation',
-description: 'Salesforce API Dokumentation',
-uploadedBy: 'dev.team@company.com',
-createdAt: '2025-02-15T11:20:00Z',
-isPublic: false
-},
-{
-id: 'att-3',
-fileName: 'test-results.xlsx',
-originalFileName: 'Integration Test Results.xlsx',
-fileSize: 1048576,
-contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-category: 'Test',
-description: 'Ergebnisse der API-Integration Tests',
-uploadedBy: 'qa.team@company.com',
-createdAt: '2025-06-20T15:45:00Z',
-isPublic: false
-}
-];
 
 export default component$(() => {
-const location = useLocation();
-const requirementId = location.params.id;
+  const params = useParams();
+  const requirementId = params.id;
 
-// State
-const requirement = useSignal<RequirementDetail | null>(null);
-const workflowSteps = useSignal<WorkflowStep[]>([]);
-const comments = useSignal<RequirementComment[]>([]);
-const attachments = useSignal<RequirementAttachment[]>([]);
-const isLoading = useSignal(true);
-const activeTab = useSignal<'overview' | 'workflow' | 'comments' | 'attachments' | 'history'>('overview');
-const showFormData = useSignal(false);
-const newComment = useSignal('');
-const isAddingComment = useSignal(false);
+  // State
+  const requirement = useSignal<Requirement | null>(null);
+  const workflowSteps = useSignal<WorkflowStep[]>([]);
+  const comments = useSignal<RequirementComment[]>([]);
+  const attachments = useSignal<RequirementAttachment[]>([]);
+  const loading = useSignal(true);
+  const activeTab = useSignal<'overview' | 'workflow' | 'comments' | 'attachments' | 'history'>('overview');
+  const showFormData = useSignal(false);
+  const newComment = useSignal('');
+  const isAddingComment = useSignal(false);
 
-// Load requirement data
-useTask$(async () => {
-// Simulate API call
-await new Promise(resolve => setTimeout(resolve, 500));
+  // Load data using your existing service pattern
+  useTask$(async () => {
+    loading.value = true;
+    
+    try {
+      // Using the same pattern as your dashboard
+      const req = await MockApiService.getRequirement(requirementId);
+      const steps = await MockApiService.getRequirementWorkflow(requirementId);
+      const commentsList = await MockApiService.getRequirementComments(requirementId);
+      const attachmentsList = await MockApiService.getRequirementAttachments(requirementId);
+      
+      requirement.value = req;
+      workflowSteps.value = steps;
+      comments.value = commentsList;
+      attachments.value = attachmentsList;
+    } catch (error) {
+      console.error('Error loading requirement:', error);
+    } finally {
+      loading.value = false;
+    }
+  });
 
+  const addComment = $(async () => {
+    if (!newComment.value.trim()) return;
+    
+    isAddingComment.value = true;
+    
+    try {
+      const comment = await MockApiService.addRequirementComment(requirementId, {
+        comment: newComment.value,
+        commentType: 'General',
+        workflowStep: requirement.value?.currentWorkflowStep
+      });
+      
+      comments.value = [comment, ...comments.value];
+      newComment.value = '';
+    } catch (error) {
+      console.error('Error adding comment:', error);
+    } finally {
+      isAddingComment.value = false;
+    }
+  });
 
-// In real app: const req = await fetch(`/api/requirements/${requirementId}`)
-requirement.value = mockRequirement;
-workflowSteps.value = mockWorkflowSteps;
-comments.value = mockComments;
-attachments.value = mockAttachments;
-isLoading.value = false;
+  const formatCurrency = (amount?: number) => {
+    if (!amount) return '-';
+    return new Intl.NumberFormat('de-DE', { style: 'currency', currency: 'EUR' }).format(amount);
+  };
 
+  const formatDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    return new Date(dateString).toLocaleDateString('de-DE');
+  };
 
-});
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
 
-const addComment = $(async () => {
-if (!newComment.value.trim()) return;
+  const getPriorityGradient = (priority: string) => {
+    switch (priority) {
+      case 'Urgent': return 'linear-gradient(135deg, #ef4444 0%, #f87171 100%)';
+      case 'High': return 'linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%)';
+      case 'Medium': return 'linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%)';
+      case 'Low': return 'linear-gradient(135deg, #10b981 0%, #34d399 100%)';
+      default: return 'linear-gradient(135deg, #6b7280 0%, #9ca3af 100%)';
+    }
+  };
 
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'Draft': return '#6b7280';
+      case 'Submitted': return '#3b82f6';
+      case 'InProgress': return '#f59e0b';
+      case 'Completed': return '#10b981';
+      case 'Rejected': return '#ef4444';
+      case 'OnHold': return '#8b5cf6';
+      default: return '#6b7280';
+    }
+  };
 
-isAddingComment.value = true;
+  const getStepIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return '✅';
+      case 'current': return '🔄';
+      case 'pending': return '⏳';
+      case 'skipped': return '⏭️';
+      default: return '⭕';
+    }
+  };
 
-// Simulate API call
-await new Promise(resolve => setTimeout(resolve, 300));
-
-const comment: RequirementComment = {
-  id: `comment-${Date.now()}`,
-  comment: newComment.value,
-  commentType: 'General',
-  createdBy: 'current.user@company.com',
-  createdAt: new Date().toISOString(),
-  isInternal: false,
-  workflowStep: requirement.value?.currentWorkflowStep
-};
-
-comments.value = [comment, ...comments.value];
-newComment.value = '';
-isAddingComment.value = false;
-
-
-});
-
-const getPriorityColor = (priority: string) => {
-switch (priority) {
-case 'Urgent': return 'bg-red-500';
-case 'High': return 'bg-orange-500';
-case 'Medium': return 'bg-yellow-500';
-case 'Low': return 'bg-green-500';
-default: return 'bg-gray-500';
-}
-};
-
-const getStatusColor = (status: string) => {
-switch (status) {
-case 'Draft': return 'bg-gray-100 text-gray-800';
-case 'Submitted': return 'bg-blue-100 text-blue-800';
-case 'InProgress': return 'bg-yellow-100 text-yellow-800';
-case 'Completed': return 'bg-green-100 text-green-800';
-case 'Rejected': return 'bg-red-100 text-red-800';
-case 'OnHold': return 'bg-purple-100 text-purple-800';
-default: return 'bg-gray-100 text-gray-800';
-}
-};
-
-const getStepStatusColor = (status: string) => {
-switch (status) {
-case 'Completed': return 'text-green-600 bg-green-100';
-case 'Current': return 'text-blue-600 bg-blue-100';
-case 'Pending': return 'text-gray-600 bg-gray-100';
-case 'Skipped': return 'text-orange-600 bg-orange-100';
-default: return 'text-gray-600 bg-gray-100';
-}
-};
-
-const formatCurrency = (amount: number, currency: string = 'EUR') => {
-return new Intl.NumberFormat('de-DE', {
-style: 'currency',
-currency: currency
-}).format(amount);
-};
-
-const formatDate = (dateString: string) => {
-return new Date(dateString).toLocaleDateString('de-DE', {
-year: 'numeric',
-month: 'long',
-day: 'numeric'
-});
-};
-
-const formatDateTime = (dateString: string) => {
-return new Date(dateString).toLocaleString('de-DE');
-};
-
-const formatFileSize = (bytes: number) => {
-const units = ['B', 'KB', 'MB', 'GB'];
-let size = bytes;
-let unitIndex = 0;
-
-
-while (size >= 1024 && unitIndex < units.length - 1) {
-  size /= 1024;
-  unitIndex++;
-}
-
-return `${size.toFixed(1)} ${units[unitIndex]}`;
-
-
-};
-
-if (isLoading.value) {
-return (
-<div class="container">
-<div class="card text-center py-12">
-<div class="text-4xl mb-4">⏳</div>
-<p class="text-lg font-medium">Anforderung wird geladen…</p>
-</div>
-</div>
-);
-}
-
-if (!requirement.value) {
-return (
-<div class="container">
-<div class="card text-center py-12">
-<div class="text-4xl mb-4">❌</div>
-<h3 class="font-medium text-gray-900 mb-2">Anforderung nicht gefunden</h3>
-<p class="text-sm text-gray-500 mb-4">
-Die angeforderte Anforderung konnte nicht geladen werden.
-</p>
-<Link href="/requirements" class="btn btn-primary">
-Zurück zur Übersicht
-</Link>
-</div>
-</div>
-);
-}
-
-const req = requirement.value;
-
-return (
-<div class="container">
-{/* Header */}
-<div class="flex items-center justify-between mb-6">
-<div class="flex items-center gap-4">
-<Link href="/requirements" class="text-blue-600 hover:text-blue-800">
-← Zurück zur Übersicht
-</Link>
-<div>
-<h1 class="text-2xl font-bold text-gray-900">{req.title}</h1>
-<p class="text-gray-600">{req.requirementNumber} • {req.requirementType}</p>
-</div>
-</div>
-<div class="flex gap-3">
-<button class="btn btn-secondary">
-📤 Exportieren
-</button>
-<Link href={`/requirements/${req.id}/edit`} class='btn btn-primary'>
-✏️ Bearbeiten
-</Link>
-</div>
-</div>
-
-
-  {/* Status Cards */}
-  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
-    <div class="card">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-600">Status</p>
-          <span class={`inline-block px-3 py-1 rounded-full text-sm font-medium ${getStatusColor(req.status)}`}>
-            {req.status}
-          </span>
-        </div>
-        <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center text-white text-xl">
-          📋
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-600">Priorität</p>
-          <div class="flex items-center gap-2 mt-1">
-            <div class={`w-3 h-3 rounded-full ${getPriorityColor(req.priority)}`}></div>
-            <span class="font-medium">{req.priority}</span>
-          </div>
-        </div>
-        <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center text-white text-xl">
-          🔥
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-600">Budget</p>
-          <p class="font-bold text-gray-900">
-            {req.approvedBudget ? formatCurrency(req.approvedBudget, req.currency) : 'Nicht genehmigt'}
-          </p>
-          {req.actualCost && (
-            <p class="text-xs text-gray-500">
-              Verbraucht: {formatCurrency(req.actualCost, req.currency)}
-            </p>
-          )}
-        </div>
-        <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center text-white text-xl">
-          💰
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm text-gray-600">Fällig</p>
-          <p class="font-medium text-gray-900">
-            {req.currentStepDueDate ? formatDate(req.currentStepDueDate) : 'Offen'}
-          </p>
-          {req.currentWorkflowStep && (
-            <p class="text-xs text-gray-500">
-              {req.currentWorkflowStep}
-            </p>
-          )}
-        </div>
-        <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center text-white text-xl">
-          📅
-        </div>
-      </div>
-    </div>
-  </div>
-
-  {/* Navigation Tabs */}
-  <div class="border-b border-gray-200 mb-6">
-    <nav class="flex space-x-8">
-      {[
-        { id: 'overview', label: 'Übersicht', icon: '📋' },
-        { id: 'workflow', label: 'Workflow', icon: '🎯' },
-        { id: 'comments', label: 'Kommentare', icon: '💬', count: comments.value.length },
-        { id: 'attachments', label: 'Anhänge', icon: '📎', count: attachments.value.length },
-        { id: 'history', label: 'Historie', icon: '📚' }
-      ].map(tab => (
-        <button
-          key={tab.id}
-          class={`py-2 px-1 border-b-2 font-medium text-sm ${
-            activeTab.value === tab.id
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-          }`}
-          onClick$={() => activeTab.value = tab.id as any}
-        >
-          <span class="mr-2">{tab.icon}</span>
-          {tab.label}
-          {tab.count !== undefined && (
-            <span class="ml-2 bg-gray-100 text-gray-600 py-1 px-2 rounded-full text-xs">
-              {tab.count}
-            </span>
-          )}
-        </button>
-      ))}
-    </nav>
-  </div>
-
-  {/* Tab Content */}
-  {activeTab.value === 'overview' && (
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {/* Basic Information */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">Grundinformationen</h3>
-        
-        <div class="space-y-4">
+  if (loading.value) {
+    return (
+      <div class="animate-fade-in">
+        <div class="flex justify-between items-center mb-8">
           <div>
-            <label class="text-sm font-medium text-gray-700">Beschreibung</label>
-            <p class="mt-1 text-gray-900">{req.description}</p>
+            <h1 class="text-primary mb-2">Anforderung wird geladen...</h1>
+            <p class="text-secondary">Einen Moment bitte</p>
           </div>
-          
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-sm font-medium text-gray-700">Angefordert von</label>
-              <p class="mt-1 text-gray-900">{req.requestedBy}</p>
+        </div>
+
+        <div class="stats-grid mb-8">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} class="stat-card">
+              <div class="animate-pulse">
+                <div style="height: 60px; background: #f1f5f9; border-radius: 8px; margin-bottom: 1rem;"></div>
+                <div style="height: 20px; background: #f1f5f9; border-radius: 4px; margin-bottom: 0.5rem;"></div>
+                <div style="height: 16px; background: #f1f5f9; border-radius: 4px; width: 60%;"></div>
+              </div>
             </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (!requirement.value) {
+    return (
+      <div class="animate-fade-in">
+        <div class="text-center py-12">
+          <div class="text-4xl mb-4">❌</div>
+          <h1 class="text-2xl font-bold text-primary mb-2">Anforderung nicht gefunden</h1>
+          <p class="text-secondary mb-4">Die angeforderte Anforderung konnte nicht geladen werden.</p>
+          <Link href="/requirements" class="btn btn-primary">Zurück zur Übersicht</Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div class="animate-fade-in">
+      {/* Header - matching your dashboard style */}
+      <div class="flex justify-between items-center mb-8">
+        <div>
+          <div class="flex items-center gap-3 mb-2">
+            <Link href="/requirements" class="text-primary hover:underline">
+              ← Anforderungen
+            </Link>
+            <span class="text-secondary">/</span>
+            <span class="text-secondary font-mono text-sm">{requirement.value.requirementNumber}</span>
+          </div>
+          <h1 class="text-primary mb-2">{requirement.value.title}</h1>
+          <p class="text-secondary">{requirement.value.description}</p>
+        </div>
+        
+        <div class="flex gap-3">
+          <Link href={`/requirements/${requirementId}/edit`} class="btn btn-secondary">
+            ✏️ Bearbeiten
+          </Link>
+          <button class="btn btn-primary">
+            📊 Export
+          </button>
+        </div>
+      </div>
+
+      {/* Stats Cards - matching your dashboard stats style */}
+      <div class="stats-grid mb-8">
+        <div class="stat-card">
+          <div class="flex items-center justify-between">
             <div>
-              <label class="text-sm font-medium text-gray-700">Fachlicher Betreuer</label>
-              <p class="mt-1 text-gray-900">{req.businessOwner || 'Nicht zugewiesen'}</p>
+              <p class="text-sm font-semibold text-secondary mb-1">Priorität</p>
+              <p class="text-3xl font-bold text-primary">{requirement.value.priority}</p>
+              <p class="text-xs text-secondary mt-1">{requirement.value.requirementType}</p>
+            </div>
+            <div class="stat-icon" style={`background: ${getPriorityGradient(requirement.value.priority)};`}>
+              🎯
             </div>
           </div>
-          
-          <div class="grid grid-cols-2 gap-4">
+        </div>
+
+        <div class="stat-card">
+          <div class="flex items-center justify-between">
             <div>
-              <label class="text-sm font-medium text-gray-700">Technischer Betreuer</label>
-              <p class="mt-1 text-gray-900">{req.technicalOwner || 'Nicht zugewiesen'}</p>
+              <p class="text-sm font-semibold text-secondary mb-1">Status</p>
+              <p class="text-3xl font-bold" style={`color: ${getStatusColor(requirement.value.status)}`}>
+                {requirement.value.status}
+              </p>
+              <p class="text-xs text-secondary mt-1">{requirement.value.currentWorkflowStep}</p>
             </div>
-            <div>
-              <label class="text-sm font-medium text-gray-700">Abteilung</label>
-              <p class="mt-1 text-gray-900">{req.department || 'Nicht angegeben'}</p>
+            <div class="stat-icon" style={`background: linear-gradient(135deg, ${getStatusColor(requirement.value.status)} 0%, ${getStatusColor(requirement.value.status)}88 100%);`}>
+              🔄
             </div>
           </div>
-          
-          <div class="grid grid-cols-2 gap-4">
+        </div>
+
+        <div class="stat-card">
+          <div class="flex items-center justify-between">
             <div>
-              <label class="text-sm font-medium text-gray-700">Angefordert am</label>
-              <p class="mt-1 text-gray-900">{formatDate(req.requestedDate)}</p>
+              <p class="text-sm font-semibold text-secondary mb-1">Budget</p>
+              <p class="text-3xl font-bold text-success">{formatCurrency(requirement.value.approvedBudget)}</p>
+              <p class="text-xs text-secondary mt-1">Verbraucht: {formatCurrency(requirement.value.actualCost)}</p>
             </div>
+            <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%);">
+              💰
+            </div>
+          </div>
+        </div>
+
+        <div class="stat-card">
+          <div class="flex items-center justify-between">
             <div>
-              <label class="text-sm font-medium text-gray-700">Benötigt bis</label>
-              <p class="mt-1 text-gray-900">{req.requiredByDate ? formatDate(req.requiredByDate) : 'Offen'}</p>
+              <p class="text-sm font-semibold text-secondary mb-1">Fällig am</p>
+              <p class="text-2xl font-bold text-warning">{formatDate(requirement.value.currentStepDueDate)}</p>
+              <p class="text-xs text-secondary mt-1">Aktueller Schritt</p>
+            </div>
+            <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);">
+              📅
             </div>
           </div>
         </div>
       </div>
 
-      {/* Financial Information */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">💰 Finanzielle Informationen</h3>
-        
-        <div class="space-y-4">
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="text-sm font-medium text-gray-700">Geschätzte Kosten</label>
-              <p class="mt-1 text-lg font-semibold text-gray-900">
-                {req.estimatedCost ? formatCurrency(req.estimatedCost, req.currency) : 'Nicht angegeben'}
-              </p>
+      {/* Tabs Navigation */}
+      <div class="tab-navigation mb-6">
+        {['overview', 'workflow', 'comments', 'attachments', 'history'].map((tab) => (
+          <button
+            key={tab}
+            class={`tab-button ${activeTab.value === tab ? 'active' : ''}`}
+            onClick$={() => activeTab.value = tab as any}
+          >
+            {tab === 'overview' && '📋 Übersicht'}
+            {tab === 'workflow' && '🔄 Workflow'}
+            {tab === 'comments' && `💬 Kommentare (${comments.value.length})`}
+            {tab === 'attachments' && `📎 Anhänge (${attachments.value.length})`}
+            {tab === 'history' && '📜 Historie'}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab Content */}
+      {activeTab.value === 'overview' && (
+        <div class="grid-2 gap-6">
+          {/* Main Content */}
+          <div class="space-y-6">
+            <div class="card">
+              <div class="card-header">
+                <h3>Beschreibung</h3>
+              </div>
+              <div class="card-content">
+                <p class="text-secondary">{requirement.value.description}</p>
+              </div>
             </div>
-            <div>
-              <label class="text-sm font-medium text-gray-700">Genehmigtes Budget</label>
-              <p class="mt-1 text-lg font-semibold text-green-600">
-                {req.approvedBudget ? formatCurrency(req.approvedBudget, req.currency) : 'Nicht genehmigt'}
-              </p>
-            </div>
-          </div>
-          
-          <div>
-            <label class="text-sm font-medium text-gray-700">Aktuelle Kosten</label>
-            <p class="mt-1 text-lg font-semibold text-blue-600">
-              {req.actualCost ? formatCurrency(req.actualCost, req.currency) : 'Noch keine Kosten'}
-            </p>
-            {req.approvedBudget && req.actualCost && (
-              <div class="mt-2">
-                <div class="flex justify-between text-sm text-gray-600 mb-1">
-                  <span>Budget-Verbrauch</span>
-                  <span>{Math.round((req.actualCost / req.approvedBudget) * 100)}%</span>
+
+            <div class="card">
+              <div class="card-header">
+                <h3>Formular-Daten</h3>
+                <button 
+                  class="btn btn-secondary btn-sm"
+                  onClick$={() => showFormData.value = !showFormData.value}
+                >
+                  {showFormData.value ? 'Ausblenden' : 'Anzeigen'}
+                </button>
+              </div>
+              {showFormData.value && requirement.value.formData && (
+                <div class="card-content">
+                  <pre class="form-data-preview">
+                    {JSON.stringify(requirement.value.formData, null, 2)}
+                  </pre>
                 </div>
-                <div class="w-full bg-gray-200 rounded-full h-2">
-                  <div 
-                    class="bg-blue-600 h-2 rounded-full" 
-                    style={`width: ${Math.min((req.actualCost / req.approvedBudget) * 100, 100)}%`}
-                  ></div>
+              )}
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div class="space-y-6">
+            <div class="card">
+              <div class="card-header">
+                <h3>Details</h3>
+              </div>
+              <div class="card-content">
+                <div class="detail-grid">
+                  <div class="detail-item">
+                    <span class="detail-label">Anforderungs-Nr.</span>
+                    <span class="detail-value font-mono">{requirement.value.requirementNumber}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Typ</span>
+                    <span class="detail-value">{requirement.value.requirementType}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Angefordert von</span>
+                    <span class="detail-value">{requirement.value.requestedBy}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Fachverantwortlich</span>
+                    <span class="detail-value">{requirement.value.businessOwner || '-'}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Technisch verantwortlich</span>
+                    <span class="detail-value">{requirement.value.technicalOwner || '-'}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Abteilung</span>
+                    <span class="detail-value">{requirement.value.department || '-'}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-header">
+                <h3>Termine</h3>
+              </div>
+              <div class="card-content">
+                <div class="detail-grid">
+                  <div class="detail-item">
+                    <span class="detail-label">Angefordert am</span>
+                    <span class="detail-value">{formatDate(requirement.value.requestedDate)}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Benötigt bis</span>
+                    <span class="detail-value">{formatDate(requirement.value.requiredByDate)}</span>
+                  </div>
+                  <div class="detail-item">
+                    <span class="detail-label">Gestartet am</span>
+                    <span class="detail-value">{formatDate(requirement.value.startDate)}</span>
+                  </div>
+                  {requirement.value.completedDate && (
+                    <div class="detail-item">
+                      <span class="detail-label">Abgeschlossen am</span>
+                      <span class="detail-value">{formatDate(requirement.value.completedDate)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {(requirement.value.hasPersonalData || requirement.value.securityClassification !== 'Public') && (
+              <div class="card security-card">
+                <div class="card-header">
+                  <h3>Sicherheit & Compliance</h3>
+                </div>
+                <div class="card-content">
+                  <div class="space-y-3">
+                    {requirement.value.hasPersonalData && (
+                      <div class="security-badge">
+                        🔒 DSGVO relevant
+                      </div>
+                    )}
+                    <div class="detail-item">
+                      <span class="detail-label">Klassifizierung</span>
+                      <span class="detail-value">{requirement.value.securityClassification}</span>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
           </div>
-          
-          {req.costCenter && (
-            <div>
-              <label class="text-sm font-medium text-gray-700">Kostenstelle</label>
-              <p class="mt-1 text-gray-900">{req.costCenter}</p>
-            </div>
-          )}
         </div>
-      </div>
+      )}
 
-      {/* Compliance & Security */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">🔒 Compliance & Sicherheit</h3>
-        
-        <div class="space-y-4">
-          <div>
-            <label class="text-sm font-medium text-gray-700">Sicherheitsklassifizierung</label>
-            <span class={`inline-block mt-1 px-3 py-1 rounded-full text-sm font-medium ${
-              req.securityClassification === 'Confidential' ? 'bg-red-100 text-red-800' :
-              req.securityClassification === 'Internal' ? 'bg-yellow-100 text-yellow-800' :
-              'bg-green-100 text-green-800'
-            }`}>
-              {req.securityClassification}
-            </span>
+      {activeTab.value === 'workflow' && (
+        <div class="card">
+          <div class="card-header">
+            <h3>Workflow-Fortschritt</h3>
           </div>
-          
-          <div>
-            <label class="text-sm font-medium text-gray-700">Personenbezogene Daten</label>
-            <p class="mt-1">
-              <span class={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                req.hasPersonalData ? 'bg-orange-100 text-orange-800' : 'bg-green-100 text-green-800'
-              }`}>
-                {req.hasPersonalData ? '⚠️ Ja' : '✅ Nein'}
-              </span>
-            </p>
-          </div>
-          
-          {req.complianceFlags && req.complianceFlags.length > 0 && (
-            <div>
-              <label class="text-sm font-medium text-gray-700">Compliance-Flags</label>
-              <div class="mt-1 flex flex-wrap gap-2">
-                {req.complianceFlags.map(flag => (
-                  <span key={flag} class="inline-block px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
-                    {flag}
-                  </span>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Form Data */}
-      <div class="card">
-        <div class="flex items-center justify-between mb-4">
-          <h3 class="text-xl font-semibold">📝 Formulardaten</h3>
-          <button 
-            class="btn btn-secondary text-sm"
-            onClick$={() => showFormData.value = !showFormData.value}
-          >
-            {showFormData.value ? 'Ausblenden' : 'Anzeigen'}
-          </button>
-        </div>
-        
-        {req.formName && (
-          <p class="text-sm text-gray-600 mb-3">Formular: {req.formName}</p>
-        )}
-        
-        {showFormData.value && req.formData && (
-          <div class="space-y-3">
-            {Object.entries(req.formData).map(([key, value]) => (
-              <div key={key}>
-                <label class="text-sm font-medium text-gray-700 capitalize">
-                  {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
-                </label>
-                <p class="mt-1 text-gray-900 bg-gray-50 p-2 rounded">{String(value)}</p>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </div>
-  )}
-
-  {activeTab.value === 'workflow' && (
-    <div class="space-y-6">
-      {/* Current Assignment */}
-      {req.currentAssignee && (
-        <div class="card bg-blue-50 border-blue-200">
-          <div class="flex items-center gap-4">
-            <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center text-white text-xl">
-              👤
-            </div>
-            <div>
-              <h3 class="font-semibold text-blue-900">Aktuell zugewiesen</h3>
-              <p class="text-blue-800">{req.currentAssignee}</p>
-              <p class="text-sm text-blue-600">
-                Schritt: {req.currentWorkflowStep} • 
-                Fällig: {req.currentStepDueDate ? formatDate(req.currentStepDueDate) : 'Offen'}
-              </p>
+          <div class="card-content">
+            <div class="workflow-steps">
+              {workflowSteps.value.map((step, index) => (
+                <div key={step.id} class={`workflow-step ${step.status}`}>
+                  <div class="workflow-icon">
+                    {getStepIcon(step.status)}
+                  </div>
+                  <div class="workflow-content">
+                    <div class="workflow-header">
+                      <h4 class="workflow-title">
+                        {step.order}. {step.name}
+                      </h4>
+                      <span class={`workflow-status ${step.status}`}>
+                        {step.status === 'completed' ? 'Abgeschlossen' :
+                         step.status === 'current' ? 'Aktuell' : 'Ausstehend'}
+                      </span>
+                    </div>
+                    <div class="workflow-meta">
+                      {step.assignedTo && <span>Zuständig: {step.assignedTo}</span>}
+                      {step.completedAt && <span> • Abgeschlossen: {formatDate(step.completedAt)}</span>}
+                      {step.dueDate && !step.completedAt && <span> • Fällig: {formatDate(step.dueDate)}</span>}
+                    </div>
+                    {step.comments && (
+                      <p class="workflow-comment">"{step.comments}"</p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>
       )}
 
-      {/* Workflow Steps */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-6">🎯 Workflow-Fortschritt</h3>
-        
-        <div class="space-y-4">
-          {workflowSteps.value.map((step, index) => (
-            <div key={step.id} class="flex items-start gap-4">
-              {/* Step Icon */}
-              <div class="flex flex-col items-center">
-                <div class={`w-10 h-10 rounded-full flex items-center justify-center text-white font-medium ${
-                  step.status === 'Completed' ? 'bg-green-500' :
-                  step.status === 'Current' ? 'bg-blue-500' :
-                  step.status === 'Skipped' ? 'bg-orange-500' :
-                  'bg-gray-300'
-                }`}>
-                  {step.status === 'Completed' ? '✓' : 
-                   step.status === 'Skipped' ? '⏭️' : 
-                   index + 1}
+      {activeTab.value === 'comments' && (
+        <div class="space-y-6">
+          {/* Add Comment */}
+          <div class="card">
+            <div class="card-header">
+              <h3>Neuen Kommentar hinzufügen</h3>
+            </div>
+            <div class="card-content">
+              <div class="comment-form">
+                <textarea
+                  class="comment-textarea"
+                  rows={3}
+                  placeholder="Kommentar eingeben..."
+                  value={newComment.value}
+                  onInput$={(e) => newComment.value = (e.target as HTMLTextAreaElement).value}
+                />
+                <div class="comment-actions">
+                  <button 
+                    class="btn btn-primary"
+                    disabled={!newComment.value.trim() || isAddingComment.value}
+                    onClick$={addComment}
+                  >
+                    {isAddingComment.value ? '💫 Wird hinzugefügt...' : '💬 Kommentar hinzufügen'}
+                  </button>
                 </div>
-                {index < workflowSteps.value.length - 1 && (
-                  <div class={`w-1 h-12 ${
-                    step.status === 'Completed' ? 'bg-green-200' : 'bg-gray-200'
-                  }`}></div>
-                )}
-              </div>
-
-              {/* Step Content */}
-              <div class="flex-1 pb-8">
-                <div class="flex items-center justify-between mb-2">
-                  <h4 class="font-medium text-gray-900">{step.title}</h4>
-                  <span class={`px-2 py-1 rounded-full text-xs font-medium ${getStepStatusColor(step.status)}`}>
-                    {step.status}
-                  </span>
-                </div>
-                
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
-                  <div>
-                    <span class="font-medium">Zugewiesen an:</span> {step.assignedTo || 'Nicht zugewiesen'}
-                  </div>
-                  <div>
-                    <span class="font-medium">Geschätzte Dauer:</span> {step.estimatedDays} Tage
-                  </div>
-                  {step.startDate && (
-                    <div>
-                      <span class="font-medium">Gestartet:</span> {formatDate(step.startDate)}
-                    </div>
-                  )}
-                  {step.completedDate && (
-                    <div>
-                      <span class="font-medium">Abgeschlossen:</span> {formatDate(step.completedDate)}
-                    </div>
-                  )}
-                  {step.dueDate && !step.completedDate && (
-                    <div>
-                      <span class="font-medium">Fällig:</span> {formatDate(step.dueDate)}
-                    </div>
-                  )}
-                  {step.actualDays && (
-                    <div>
-                      <span class="font-medium">Tatsächliche Dauer:</span> {step.actualDays} Tage
-                    </div>
-                  )}
-                </div>
-                
-                {step.comments && (
-                  <div class="mt-3 p-3 bg-gray-50 rounded-lg">
-                    <p class="text-sm text-gray-700">{step.comments}</p>
-                  </div>
-                )}
               </div>
             </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  )}
+          </div>
 
-  {activeTab.value === 'comments' && (
-    <div class="space-y-6">
-      {/* Add Comment */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">💬 Neuen Kommentar hinzufügen</h3>
-        
-        <div class="space-y-4">
-          <textarea
-            class="form-input"
-            rows={4}
-            placeholder="Ihr Kommentar..."
-            value={newComment.value}
-            onInput$={(e) => newComment.value = (e.target as HTMLTextAreaElement).value}
-          />
-          <button 
-            class="btn btn-primary"
-            onClick$={addComment}
-            disabled={!newComment.value.trim() || isAddingComment.value}
-          >
-            {isAddingComment.value ? 'Wird hinzugefügt...' : 'Kommentar hinzufügen'}
-          </button>
-        </div>
-      </div>
-
-      {/* Comments List */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">Kommentare ({comments.value.length})</h3>
-        
-        <div class="space-y-4">
-          {comments.value.map((comment) => (
-            <div key={comment.id} class={`p-4 rounded-lg border ${
-              comment.isInternal ? 'bg-yellow-50 border-yellow-200' : 'bg-white border-gray-200'
-            }`}>
-              <div class="flex items-start justify-between mb-2">
-                <div class="flex items-center gap-3">
-                  <div class="w-8 h-8 bg-gray-300 rounded-full flex items-center justify-center text-sm font-medium">
+          {/* Comments List */}
+          <div class="comments-list">
+            {comments.value.map((comment) => (
+              <div key={comment.id} class="card comment-card">
+                <div class="comment-header">
+                  <div class="activity-avatar">
                     {comment.createdBy.charAt(0).toUpperCase()}
                   </div>
-                  <div>
-                    <p class="font-medium text-gray-900">{comment.createdBy.split('@')[0]}</p>
-                    <p class="text-sm text-gray-500">{formatDateTime(comment.createdAt)}</p>
+                  <div class="comment-meta">
+                    <p class="comment-author">{comment.createdBy}</p>
+                    <p class="comment-date">
+                      {formatDate(comment.createdAt)} 
+                      {comment.workflowStep && ` • ${comment.workflowStep}`}
+                    </p>
                   </div>
-                </div>
-                <div class="flex items-center gap-2">
-                  {comment.isInternal && (
-                    <span class="px-2 py-1 bg-yellow-100 text-yellow-800 text-xs rounded-full">
-                      Intern
-                    </span>
-                  )}
-                  <span class={`px-2 py-1 text-xs rounded-full ${
-                    comment.commentType === 'StatusChange' ? 'bg-blue-100 text-blue-800' :
-                    comment.commentType === 'Approval' ? 'bg-green-100 text-green-800' :
-                    comment.commentType === 'Technical' ? 'bg-purple-100 text-purple-800' :
-                    'bg-gray-100 text-gray-800'
-                  }`}>
+                  <span class={`comment-type ${comment.commentType.toLowerCase()}`}>
                     {comment.commentType}
                   </span>
                 </div>
-              </div>
-              
-              <p class="text-gray-900 mb-2">{comment.comment}</p>
-              
-              {comment.workflowStep && (
-                <p class="text-xs text-gray-500">
-                  Workflow-Schritt: {comment.workflowStep}
-                </p>
-              )}
-              
-              {comment.previousStatus && comment.newStatus && (
-                <p class="text-xs text-blue-600">
-                  Status geändert: {comment.previousStatus} → {comment.newStatus}
-                </p>
-              )}
-            </div>
-          ))}
-          
-          {comments.value.length === 0 && (
-            <div class="text-center py-8 text-gray-500">
-              <div class="text-4xl mb-4">💬</div>
-              <p>Noch keine Kommentare vorhanden</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )}
-
-  {activeTab.value === 'attachments' && (
-    <div class="space-y-6">
-      {/* Upload Area */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">📎 Datei hinzufügen</h3>
-        
-        <div class="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-gray-400 transition-colors">
-          <div class="text-4xl mb-4">📁</div>
-          <p class="text-lg font-medium text-gray-900 mb-2">Dateien hier ablegen</p>
-          <p class="text-sm text-gray-500 mb-4">oder klicken zum Auswählen</p>
-          <button class="btn btn-primary">
-            Dateien auswählen
-          </button>
-        </div>
-      </div>
-
-      {/* Attachments List */}
-      <div class="card">
-        <h3 class="text-xl font-semibold mb-4">Anhänge ({attachments.value.length})</h3>
-        
-        <div class="space-y-3">
-          {attachments.value.map((attachment) => (
-            <div key={attachment.id} class="flex items-center justify-between p-4 border border-gray-200 rounded-lg hover:bg-gray-50">
-              <div class="flex items-center gap-4">
-                <div class="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center">
-                  {attachment.contentType.includes('pdf') ? '📄' :
-                   attachment.contentType.includes('image') ? '🖼️' :
-                   attachment.contentType.includes('spreadsheet') ? '📊' :
-                   '📎'}
-                </div>
-                <div>
-                  <h4 class="font-medium text-gray-900">{attachment.originalFileName}</h4>
-                  <div class="flex items-center gap-4 text-sm text-gray-500">
-                    <span>{formatFileSize(attachment.fileSize)}</span>
-                    <span>•</span>
-                    <span>{attachment.category}</span>
-                    <span>•</span>
-                    <span>Hochgeladen von {attachment.uploadedBy.split('@')[0]}</span>
-                    <span>•</span>
-                    <span>{formatDateTime(attachment.createdAt)}</span>
-                  </div>
-                  {attachment.description && (
-                    <p class="text-sm text-gray-600 mt-1">{attachment.description}</p>
+                <div class="comment-content">
+                  <p>{comment.comment}</p>
+                  {comment.isInternal && (
+                    <span class="internal-badge">
+                      Interner Kommentar
+                    </span>
                   )}
                 </div>
               </div>
-              
-              <div class="flex items-center gap-2">
-                {!attachment.isPublic && (
-                  <span class="px-2 py-1 bg-red-100 text-red-800 text-xs rounded-full">
-                    Privat
-                  </span>
-                )}
-                <button class="btn btn-secondary text-sm">
-                  📥 Download
-                </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {activeTab.value === 'attachments' && (
+        <div class="space-y-6">
+          {/* Upload Area */}
+          <div class="card upload-card">
+            <div class="upload-content">
+              <div class="upload-icon">📎</div>
+              <h3>Dateien hochladen</h3>
+              <p class="text-secondary">Ziehen Sie Dateien hierher oder klicken Sie zum Auswählen</p>
+              <button class="btn btn-primary">Dateien auswählen</button>
+            </div>
+          </div>
+
+          {/* Attachments List */}
+          <div class="card">
+            <div class="card-header">
+              <h3>Anhänge ({attachments.value.length})</h3>
+            </div>
+            <div class="card-content">
+              {attachments.value.length === 0 ? (
+                <p class="text-secondary">Noch keine Anhänge vorhanden.</p>
+              ) : (
+                <div class="attachments-list">
+                  {attachments.value.map((attachment) => (
+                    <div key={attachment.id} class="attachment-item">
+                      <div class="attachment-icon">
+                        {attachment.category === 'Image' ? '🖼️' :
+                         attachment.category === 'Document' ? '📄' :
+                         attachment.category === 'Technical' ? '⚙️' :
+                         attachment.category === 'Specification' ? '📋' : '📁'}
+                      </div>
+                      <div class="attachment-info">
+                        <p class="attachment-name">{attachment.originalFileName}</p>
+                        <p class="attachment-meta">
+                          {formatFileSize(attachment.fileSize)} • 
+                          {attachment.category} • 
+                          von {attachment.uploadedBy} • 
+                          {formatDate(attachment.createdAt)}
+                        </p>
+                        {attachment.description && (
+                          <p class="attachment-description">{attachment.description}</p>
+                        )}
+                      </div>
+                      <div class="attachment-actions">
+                        <button class="btn btn-secondary btn-sm">
+                          👁️ Anzeigen
+                        </button>
+                        <button class="btn btn-secondary btn-sm">
+                          ⬇️ Download
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab.value === 'history' && (
+        <div class="card">
+          <div class="card-header">
+            <h3>Änderungshistorie</h3>
+          </div>
+          <div class="card-content">
+            <div class="history-timeline">
+              <div class="timeline-item">
+                <div class="timeline-marker status-change"></div>
+                <div class="timeline-content">
+                  <p class="timeline-title">Status geändert zu "InProgress"</p>
+                  <p class="timeline-meta">von system am {formatDate('2025-02-16')}</p>
+                </div>
+              </div>
+              <div class="timeline-item">
+                <div class="timeline-marker created"></div>
+                <div class="timeline-content">
+                  <p class="timeline-title">Anforderung erstellt</p>
+                  <p class="timeline-meta">von {requirement.value.requestedBy} am {formatDate(requirement.value.requestedDate)}</p>
+                </div>
               </div>
             </div>
-          ))}
-          
-          {attachments.value.length === 0 && (
-            <div class="text-center py-8 text-gray-500">
-              <div class="text-4xl mb-4">📎</div>
-              <p>Noch keine Anhänge vorhanden</p>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  )}
-
-  {activeTab.value === 'history' && (
-    <div class="card">
-      <h3 class="text-xl font-semibold mb-4">📚 Änderungshistorie</h3>
-      
-      <div class="space-y-4">
-        <div class="p-4 border-l-4 border-blue-500 bg-blue-50">
-          <div class="flex justify-between items-start mb-2">
-            <h4 class="font-medium text-blue-900">Anforderung erstellt</h4>
-            <span class="text-sm text-blue-600">{formatDateTime(req.createdAt)}</span>
           </div>
-          <p class="text-blue-800">Von: {req.createdBy}</p>
         </div>
+      )}
+
+      <style>{`
+        /* Your existing stat-icon and activity styles plus new ones */
+        .stat-icon {
+          width: 56px;
+          height: 56px;
+          border-radius: 1rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.5rem;
+          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
         
-        <div class="p-4 border-l-4 border-green-500 bg-green-50">
-          <div class="flex justify-between items-start mb-2">
-            <h4 class="font-medium text-green-900">Anforderung zuletzt geändert</h4>
-            <span class="text-sm text-green-600">{formatDateTime(req.modifiedAt)}</span>
-          </div>
-          <p class="text-green-800">Von: {req.modifiedBy || 'System'}</p>
-        </div>
+        .activity-avatar {
+          width: 32px;
+          height: 32px;
+          background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
+          color: white;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 0.75rem;
+          font-weight: 600;
+        }
         
-        {/* More history entries would be loaded from API */}
-        <div class="text-center py-8 text-gray-500">
-          <p class="text-sm">Weitere Historiendaten werden aus der Datenbank geladen...</p>
-        </div>
-      </div>
+        .tab-navigation {
+          display: flex;
+          border-bottom: 2px solid var(--border-color);
+          gap: 2rem;
+        }
+        
+        .tab-button {
+          padding: 0.75rem 0;
+          border: none;
+          background: none;
+          font-weight: 500;
+          color: var(--secondary-color);
+          border-bottom: 2px solid transparent;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+        
+        .tab-button:hover {
+          color: var(--primary-color);
+        }
+        
+        .tab-button.active {
+          color: var(--primary-color);
+          border-bottom-color: var(--primary-color);
+        }
+        
+        .detail-grid {
+          display: grid;
+          gap: 1rem;
+        }
+        
+        .detail-item {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 0.5rem 0;
+          border-bottom: 1px solid var(--border-color);
+        }
+        
+        .detail-item:last-child {
+          border-bottom: none;
+        }
+        
+        .detail-label {
+          font-size: 0.875rem;
+          color: var(--secondary-color);
+          font-weight: 500;
+        }
+        
+        .detail-value {
+          font-size: 0.875rem;
+          color: var(--text-color);
+          text-align: right;
+        }
+        
+        .security-card {
+          border: 2px solid #f59e0b;
+          background: linear-gradient(135deg, rgba(245, 158, 11, 0.05) 0%, rgba(251, 191, 36, 0.05) 100%);
+        }
+        
+        .security-badge {
+          display: inline-block;
+          padding: 0.5rem 1rem;
+          background: rgba(245, 158, 11, 0.1);
+          color: #f59e0b;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+          font-weight: 500;
+        }
+        
+        .workflow-steps {
+          display: grid;
+          gap: 1rem;
+        }
+        
+        .workflow-step {
+          display: flex;
+          gap: 1rem;
+          padding: 1rem;
+          border-radius: 0.5rem;
+          border: 1px solid var(--border-color);
+          transition: all 0.2s ease;
+        }
+        
+        .workflow-step:hover {
+          background: var(--background-color);
+        }
+        
+        .workflow-step.current {
+          border-color: var(--primary-color);
+          background: rgba(59, 130, 246, 0.05);
+        }
+        
+        .workflow-icon {
+          font-size: 1.5rem;
+          line-height: 1;
+        }
+        
+        .workflow-content {
+          flex: 1;
+        }
+        
+        .workflow-header {
+          display: flex;
+          justify-content: between;
+          align-items: center;
+          margin-bottom: 0.5rem;
+        }
+        
+        .workflow-title {
+          font-weight: 600;
+          color: var(--text-color);
+          margin: 0;
+        }
+        
+        .workflow-step.current .workflow-title {
+          color: var(--primary-color);
+        }
+        
+        .workflow-status {
+          padding: 0.25rem 0.75rem;
+          border-radius: 1rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+        }
+        
+        .workflow-status.completed {
+          background: rgba(16, 185, 129, 0.1);
+          color: #10b981;
+        }
+        
+        .workflow-status.current {
+          background: rgba(59, 130, 246, 0.1);
+          color: #3b82f6;
+        }
+        
+        .workflow-status.pending {
+          background: rgba(107, 114, 128, 0.1);
+          color: #6b7280;
+        }
+        
+        .workflow-meta {
+          font-size: 0.875rem;
+          color: var(--secondary-color);
+          margin-bottom: 0.5rem;
+        }
+        
+        .workflow-comment {
+          font-style: italic;
+          color: var(--secondary-color);
+          font-size: 0.875rem;
+          margin: 0;
+        }
+        
+        .comment-form {
+          display: grid;
+          gap: 1rem;
+        }
+        
+        .comment-textarea {
+          width: 100%;
+          padding: 0.75rem;
+          border: 1px solid var(--border-color);
+          border-radius: 0.5rem;
+          resize: none;
+          font-family: inherit;
+        }
+        
+        .comment-actions {
+          display: flex;
+          justify-content: flex-end;
+        }
+        
+        .comments-list {
+          display: grid;
+          gap: 1rem;
+        }
+        
+        .comment-card {
+          padding: 1rem;
+        }
+        
+        .comment-header {
+          display: flex;
+          align-items: center;
+          gap: 0.75rem;
+          margin-bottom: 1rem;
+        }
+        
+        .comment-meta {
+          flex: 1;
+        }
+        
+        .comment-author {
+          font-weight: 600;
+          margin: 0;
+        }
+        
+        .comment-date {
+          font-size: 0.875rem;
+          color: var(--secondary-color);
+          margin: 0;
+        }
+        
+        .comment-type {
+          padding: 0.25rem 0.75rem;
+          border-radius: 1rem;
+          font-size: 0.75rem;
+          font-weight: 500;
+        }
+        
+        .comment-type.technical {
+          background: rgba(59, 130, 246, 0.1);
+          color: #3b82f6;
+        }
+        
+        .comment-type.general {
+          background: rgba(107, 114, 128, 0.1);
+          color: #6b7280;
+        }
+        
+        .comment-content p {
+          margin: 0;
+        }
+        
+        .internal-badge {
+          display: inline-block;
+          margin-top: 0.5rem;
+          padding: 0.25rem 0.75rem;
+          background: rgba(245, 158, 11, 0.1);
+          color: #f59e0b;
+          border-radius: 1rem;
+          font-size: 0.75rem;
+        }
+        
+        .upload-card {
+          border: 2px dashed var(--border-color);
+          text-align: center;
+        }
+        
+        .upload-content {
+          padding: 3rem 1rem;
+        }
+        
+        .upload-icon {
+          font-size: 3rem;
+          margin-bottom: 1rem;
+        }
+        
+        .upload-content h3 {
+          margin: 0 0 0.5rem 0;
+        }
+        
+        .upload-content p {
+          margin: 0 0 1.5rem 0;
+        }
+        
+        .attachments-list {
+          display: grid;
+          gap: 1rem;
+        }
+        
+        .attachment-item {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1rem;
+          border: 1px solid var(--border-color);
+          border-radius: 0.5rem;
+        }
+        
+        .attachment-icon {
+          font-size: 1.5rem;
+        }
+        
+        .attachment-info {
+          flex: 1;
+        }
+        
+        .attachment-name {
+          font-weight: 600;
+          margin: 0 0 0.25rem 0;
+        }
+        
+        .attachment-meta {
+          font-size: 0.875rem;
+          color: var(--secondary-color);
+          margin: 0;
+        }
+        
+        .attachment-description {
+          font-size: 0.875rem;
+          color: var(--text-color);
+          margin: 0.25rem 0 0 0;
+        }
+        
+        .attachment-actions {
+          display: flex;
+          gap: 0.5rem;
+        }
+        
+        .history-timeline {
+          position: relative;
+          padding-left: 2rem;
+        }
+        
+        .timeline-item {
+          position: relative;
+          padding-bottom: 2rem;
+        }
+        
+        .timeline-item:not(:last-child)::before {
+          content: '';
+          position: absolute;
+          left: -1.5rem;
+          top: 1.5rem;
+          bottom: -0.5rem;
+          width: 2px;
+          background: var(--border-color);
+        }
+        
+        .timeline-marker {
+          position: absolute;
+          left: -2rem;
+          top: 0.25rem;
+          width: 1rem;
+          height: 1rem;
+          border-radius: 50%;
+          border: 2px solid var(--background-color);
+        }
+        
+        .timeline-marker.status-change {
+          background: #3b82f6;
+        }
+        
+        .timeline-marker.created {
+          background: #10b981;
+        }
+        
+        .timeline-title {
+          font-weight: 600;
+          margin: 0 0 0.25rem 0;
+        }
+        
+        .timeline-meta {
+          font-size: 0.875rem;
+          color: var(--secondary-color);
+          margin: 0;
+        }
+        
+        .form-data-preview {
+          background: var(--background-color);
+          padding: 1rem;
+          border-radius: 0.5rem;
+          font-size: 0.875rem;
+          overflow-x: auto;
+        }
+        
+        .space-y-6 > * + * {
+          margin-top: 1.5rem;
+        }
+        
+        .space-y-3 > * + * {
+          margin-top: 0.75rem;
+        }
+      `}</style>
     </div>
-  )}
-</div>
-
-
-);
+  );
 });
