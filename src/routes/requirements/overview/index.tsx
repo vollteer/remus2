@@ -1,214 +1,314 @@
-import { component$, useSignal, useTask$ } from '@builder.io/qwik';
-import type { DashboardStats } from '../types';
-import { MockApiService } from '../services/mock-service';
+import { component$, useSignal, useTask$, $ } from '@builder.io/qwik';
+import type { Requirement, RequirementType, RequirementStatus, Priority } from '../../types';
+import { MockApiService } from '../../../services/mock-service';
 
 export default component$(() => {
-  const stats = useSignal<DashboardStats | null>(null);
+  const requirements = useSignal<Requirement[]>([]);
   const loading = useSignal(true);
+  const filters = useSignal({
+    type: '' as RequirementType | '',
+    status: '' as RequirementStatus | '',
+    priority: '' as Priority | '',
+    search: ''
+  });
 
-  useTask$(async () => {
+  const loadRequirements = $(async () => {
+    loading.value = true;
     try {
-      const data = await MockApiService.getDashboardStats();
-      stats.value = data;
+      const data = await MockApiService.getRequirements({
+        type: filters.value.type || undefined,
+        status: filters.value.status || undefined,
+        priority: filters.value.priority || undefined,
+        search: filters.value.search || undefined,
+      });
+      requirements.value = data;
     } catch (error) {
-      console.error('Error loading dashboard stats:', error);
+      console.error('Error loading requirements:', error);
     } finally {
       loading.value = false;
     }
   });
 
+  useTask$(async () => {
+    await loadRequirements();
+  });
+
+  const getStatusBadge = (status: RequirementStatus) => {
+    const badges = {
+      'Draft': 'badge-info',
+      'Open': 'badge-info',
+      'In Progress': 'badge-warning',
+      'Review': 'badge-warning',
+      'Testing': 'badge-warning',
+      'Completed': 'badge-success',
+      'Rejected': 'badge-error',
+      'On Hold': 'badge-error'
+    };
+    return badges[status] || 'badge-info';
+  };
+
+  const getPriorityBadge = (priority: Priority) => {
+    const badges = {
+      'low': 'badge-success',
+      'medium': 'badge-warning',
+      'high': 'badge-error',
+      'critical': 'badge-error'
+    };
+    return badges[priority];
+  };
+
+  const getPriorityText = (priority: Priority) => {
+    const text = {
+      'low': 'Niedrig',
+      'medium': 'Mittel',
+      'high': 'Hoch',
+      'critical': 'Kritisch'
+    };
+    return text[priority];
+  };
+
   return (
     <div class="animate-fade-in">
       <div class="flex justify-between items-center mb-8">
         <div>
-          <h1 class="text-primary mb-2">Dashboard</h1>
-          <p class="text-secondary">Überblick über alle Anforderungen und Aktivitäten</p>
+          <h1 class="text-primary mb-2">Anforderungen</h1>
+          <p class="text-secondary">Verwalten und verfolgen Sie alle Anforderungen</p>
         </div>
         
         <div class="flex gap-3">
           <button class="btn btn-secondary">
-            📊 Berichte
+            📤 Export
           </button>
-          <a href="/requirements/new" class="btn btn-primary">
-  + Neue Anforderung
-</a>
+		<a href="/requirements/new" class="btn btn-primary">
+		  + Neue Anforderung erstellen
+		</a>
         </div>
       </div>
 
-      {loading.value ? (
-        <div class="stats-grid">
-          {[1, 2, 3, 4].map(i => (
-            <div key={i} class="stat-card">
-              <div class="animate-pulse">
-                <div style="height: 60px; background: #f1f5f9; border-radius: 8px; margin-bottom: 1rem;"></div>
-                <div style="height: 20px; background: #f1f5f9; border-radius: 4px; margin-bottom: 0.5rem;"></div>
-                <div style="height: 16px; background: #f1f5f9; border-radius: 4px; width: 60%;"></div>
-              </div>
-            </div>
-          ))}
+      {/* Filters */}
+      <div class="card mb-6">
+        <div class="card-header">
+          <h3>Filter & Suche</h3>
         </div>
-      ) : (
-        <div class="stats-grid">
-          <div class="stat-card">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-secondary mb-1">Offene Anforderungen</p>
-                <p class="text-3xl font-bold text-primary">{stats.value?.openRequirements}</p>
-                <p class="text-xs text-secondary mt-1">+8% seit letztem Monat</p>
-              </div>
-              <div class="stat-icon" style="background: linear-gradient(135deg, rgb(0, 158, 227) 0%, rgb(0, 200, 255) 100%);">
-                📋
-              </div>
+        
+        <div class="grid-4 gap-4 mb-4">
+          <div class="form-group">
+            <label class="form-label">Anforderungsart</label>
+            <select 
+              class="form-select"
+              value={filters.value.type}
+              onChange$={(e) => {
+                filters.value = { ...filters.value, type: (e.target as HTMLSelectElement).value as RequirementType | '' };
+                loadRequirements();
+              }}
+            >
+              <option value="">Alle Arten</option>
+              <option value="Kleinanforderung">Kleinanforderung</option>
+              <option value="Großanforderung">Großanforderung</option>
+              <option value="TIA-Anforderung">TIA-Anforderung</option>
+              <option value="Supportleistung">Supportleistung</option>
+              <option value="Betriebsauftrag">Betriebsauftrag</option>
+              <option value="SBBI-Lösung">SBBI-Lösung</option>
+              <option value="AWG-Release">AWG-Release</option>
+              <option value="AWS-Release">AWS-Release</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Status</label>
+            <select 
+              class="form-select"
+              value={filters.value.status}
+              onChange$={(e) => {
+                filters.value = { ...filters.value, status: (e.target as HTMLSelectElement).value as RequirementStatus | '' };
+                loadRequirements();
+              }}
+            >
+              <option value="">Alle Status</option>
+              <option value="Draft">Entwurf</option>
+              <option value="Open">Offen</option>
+              <option value="In Progress">In Bearbeitung</option>
+              <option value="Review">Review</option>
+              <option value="Testing">Test</option>
+              <option value="Completed">Abgeschlossen</option>
+              <option value="Rejected">Abgelehnt</option>
+              <option value="On Hold">Pausiert</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Priorität</label>
+            <select 
+              class="form-select"
+              value={filters.value.priority}
+              onChange$={(e) => {
+                filters.value = { ...filters.value, priority: (e.target as HTMLSelectElement).value as Priority | '' };
+                loadRequirements();
+              }}
+            >
+              <option value="">Alle Prioritäten</option>
+              <option value="low">Niedrig</option>
+              <option value="medium">Mittel</option>
+              <option value="high">Hoch</option>
+              <option value="critical">Kritisch</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label class="form-label">Suche</label>
+            <input 
+              type="text" 
+              class="form-input" 
+              placeholder="ID, Titel, Beschreibung..."
+              value={filters.value.search}
+              onInput$={(e) => {
+                filters.value = { ...filters.value, search: (e.target as HTMLInputElement).value };
+              }}
+              onKeyDown$={(e) => {
+                if (e.key === 'Enter') {
+                  loadRequirements();
+                }
+              }}
+            />
+          </div>
+        </div>
+        
+        <div class="flex gap-3">
+          <button class="btn btn-primary" onClick$={loadRequirements}>
+            🔍 Filter anwenden
+          </button>
+          <button 
+            class="btn btn-secondary"
+            onClick$={() => {
+              filters.value = { type: '', status: '', priority: '', search: '' };
+              loadRequirements();
+            }}
+          >
+            ↻ Zurücksetzen
+          </button>
+        </div>
+      </div>
+
+      {/* Requirements Table */}
+      <div class="table-container">
+        {loading.value ? (
+          <div class="p-8 text-center">
+            <div class="animate-pulse">
+              <div style="height: 20px; background: #f1f5f9; border-radius: 4px; margin-bottom: 1rem;"></div>
+              <div style="height: 20px; background: #f1f5f9; border-radius: 4px; margin-bottom: 1rem;"></div>
+              <div style="height: 20px; background: #f1f5f9; border-radius: 4px;"></div>
             </div>
           </div>
-
-          <div class="stat-card">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-secondary mb-1">In Bearbeitung</p>
-                <p class="text-3xl font-bold text-warning">{stats.value?.inProgressRequirements}</p>
-                <p class="text-xs text-secondary mt-1">-2% seit letztem Monat</p>
+        ) : (
+          <>
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Titel</th>
+                  <th>Typ</th>
+                  <th>Status</th>
+                  <th>Priorität</th>
+                  <th>Zugewiesen</th>
+                  <th>Fällig</th>
+                  <th>Aktionen</th>
+                </tr>
+              </thead>
+              <tbody>
+                {requirements.value.map((req) => (
+                  <tr key={req.id}>
+                    <td>
+                      <span class="font-mono text-sm font-medium text-primary">{req.id}</span>
+                    </td>
+                    <td>
+                      <div>
+                        <p class="font-semibold">{req.title}</p>
+                        {req.description && (
+                          <p class="text-xs text-secondary mt-1 truncate" style="max-width: 200px;">
+                            {req.description}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span class="text-sm">{req.type}</span>
+                    </td>
+                    <td>
+                      <span class={`badge ${getStatusBadge(req.status)}`}>
+                        {req.status}
+                      </span>
+                    </td>
+                    <td>
+                      <span class={`badge ${getPriorityBadge(req.priority)}`}>
+                        {getPriorityText(req.priority)}
+                      </span>
+                    </td>
+                    <td>
+                      {req.assignedTo ? (
+                        <div class="flex items-center gap-2">
+                          <div class="activity-avatar text-xs">
+                            {req.assignedTo.avatar}
+                          </div>
+                          <span class="text-sm">{req.assignedTo.name}</span>
+                        </div>
+                      ) : (
+                        <span class="text-secondary text-sm">Nicht zugewiesen</span>
+                      )}
+                    </td>
+                    <td>
+                      {req.dueDate ? (
+                        <span class="text-sm">
+                          {new Date(req.dueDate).toLocaleDateString('de-DE')}
+                        </span>
+                      ) : (
+                        <span class="text-secondary text-sm">Kein Datum</span>
+                      )}
+                    </td>
+                    <td>
+                      <div class="flex gap-2">
+                        <button class="btn btn-sm btn-secondary">
+                          👁️ Anzeigen
+                        </button>
+                        <button class="btn btn-sm btn-secondary">
+                          ✏️ Bearbeiten
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            
+            {requirements.value.length === 0 && (
+              <div class="text-center py-12">
+                <div class="text-4xl mb-4">📋</div>
+                <h3 class="text-lg font-semibold mb-2">Keine Anforderungen gefunden</h3>
+                <p class="text-secondary mb-4">
+                  {filters.value.search || filters.value.type || filters.value.status 
+                    ? 'Versuchen Sie andere Suchkriterien oder erstellen Sie eine neue Anforderung.'
+                    : 'Erstellen Sie Ihre erste Anforderung.'
+                  }
+                </p>
+                <button class="btn btn-primary">
+                  + Neue Anforderung erstellen
+                </button>
               </div>
-              <div class="stat-icon" style="background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%);">
-                ⚡
-              </div>
-            </div>
-          </div>
-
-          <div class="stat-card">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-secondary mb-1">Abgeschlossen</p>
-                <p class="text-3xl font-bold text-success">{stats.value?.completedRequirements}</p>
-                <p class="text-xs text-secondary mt-1">+15% seit letztem Monat</p>
-              </div>
-              <div class="stat-icon" style="background: linear-gradient(135deg, #10b981 0%, #34d399 100%);">
-                ✅
-              </div>
-            </div>
-          </div>
-
-          <div class="stat-card">
-            <div class="flex items-center justify-between">
-              <div>
-                <p class="text-sm font-semibold text-secondary mb-1">Überfällig</p>
-                <p class="text-3xl font-bold text-error">{stats.value?.overdueRequirements}</p>
-                <p class="text-xs text-secondary mt-1">-1 seit letzter Woche</p>
-              </div>
-              <div class="stat-icon" style="background: linear-gradient(135deg, #ef4444 0%, #f87171 100%);">
-                ⚠️
-              </div>
-            </div>
+            )}
+          </>
+        )}
+      </div>
+      
+      {requirements.value.length > 0 && (
+        <div class="flex justify-between items-center mt-6 px-4">
+          <p class="text-sm text-secondary">
+            Zeige {requirements.value.length} von {requirements.value.length} Anforderungen
+          </p>
+          <div class="flex gap-2">
+            <button class="btn btn-sm btn-secondary">← Vorherige</button>
+            <button class="btn btn-sm btn-secondary">Nächste →</button>
           </div>
         </div>
       )}
-
-      <div class="grid-2 gap-6 mt-8">
-        <div class="card">
-          <div class="card-header">
-            <h3>Anforderungen nach Typ</h3>
-          </div>
-          <div class="space-y-4">
-            {stats.value && Object.entries(stats.value.requirementsByType).map(([type, count]) => (
-              <div key={type} class="flex justify-between items-center">
-                <span class="text-sm font-medium">{type}</span>
-                <div class="flex items-center gap-3">
-                  <div class="progress-bar">
-                    <div 
-                      class="progress-fill" 
-                      style={`width: ${(count / stats.value!.totalRequirements) * 100}%`}
-                    ></div>
-                  </div>
-                  <span class="text-sm font-bold text-primary w-8 text-right">{count}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div class="card">
-          <div class="card-header">
-            <h3>Letzte Aktivitäten</h3>
-          </div>
-          <div class="space-y-4">
-            <div class="activity-item">
-              <div class="activity-avatar">MM</div>
-              <div class="flex-1">
-                <p class="text-sm font-medium">Max Mustermann</p>
-                <p class="text-xs text-secondary">Hat REQ-2025-001 aktualisiert</p>
-                <p class="text-xs text-secondary">vor 2 Stunden</p>
-              </div>
-            </div>
-            
-            <div class="activity-item">
-              <div class="activity-avatar">AS</div>
-              <div class="flex-1">
-                <p class="text-sm font-medium">Anna Schmidt</p>
-                <p class="text-xs text-secondary">Hat einen Kommentar hinzugefügt</p>
-                <p class="text-xs text-secondary">vor 4 Stunden</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-      
-      <style>{`
-        .stat-icon {
-          width: 56px;
-          height: 56px;
-          border-radius: 1rem;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 1.5rem;
-          box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-        }
-        
-        .progress-bar {
-          width: 100px;
-          height: 6px;
-          background: var(--border-color);
-          border-radius: 3px;
-          overflow: hidden;
-        }
-        
-        .progress-fill {
-          height: 100%;
-          background: linear-gradient(90deg, var(--primary-color) 0%, var(--primary-light) 100%);
-          border-radius: 3px;
-          transition: width 0.3s ease;
-        }
-        
-        .activity-item {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          padding: 0.75rem;
-          border-radius: 0.5rem;
-          transition: background 0.2s ease;
-        }
-        
-        .activity-item:hover {
-          background: var(--background-color);
-        }
-        
-        .activity-avatar {
-          width: 32px;
-          height: 32px;
-          background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
-          color: white;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 0.75rem;
-          font-weight: 600;
-        }
-        
-        .space-y-4 > * + * {
-          margin-top: 1rem;
-        }
-      `}</style>
     </div>
   );
 });

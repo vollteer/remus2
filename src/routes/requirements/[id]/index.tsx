@@ -1,6 +1,6 @@
 // src/routes/requirements/[id]/index.tsx
 import { component$, useSignal, useTask$, $ } from '@builder.io/qwik';
-import { useParams, Link } from '@builder.io/qwik-city';
+import { useLocation, Link } from '@builder.io/qwik-city';
 import { MockApiService } from '../../../services/mock-service';
 
 interface Requirement {
@@ -68,8 +68,8 @@ interface RequirementAttachment {
 }
 
 export default component$(() => {
-  const params = useParams();
-  const requirementId = params.id;
+  const location = useLocation();
+  const requirementId = location.params.id;
 
   // State
   const requirement = useSignal<Requirement | null>(null);
