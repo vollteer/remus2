@@ -53,11 +53,11 @@ namespace YourProject.Controllers
 
                 if (config == null)
                 {
-                    return Ok(ApiResponse<FormConfigurationDto>.Success(null, "No form configuration found"));
+                    return Ok(ApiResponse<FormConfigurationDto>.CreateSuccess(null, "No form configuration found"));
                 }
 
                 var dto = MapToDto(config);
-                return Ok(ApiResponse<FormConfigurationDto>.Success(dto));
+                return Ok(ApiResponse<FormConfigurationDto>.CreateSuccess(dto));
             }
             catch (Exception ex)
             {
@@ -83,7 +83,7 @@ namespace YourProject.Controllers
                 }
 
                 var dto = MapToDto(config);
-                return Ok(ApiResponse<FormConfigurationDto>.Success(dto));
+                return Ok(ApiResponse<FormConfigurationDto>.CreateSuccess(dto));
             }
             catch (Exception ex)
             {
@@ -145,7 +145,7 @@ namespace YourProject.Controllers
                 return CreatedAtAction(
                     nameof(GetFormConfigurationById), 
                     new { id = savedConfig.Id }, 
-                    ApiResponse<FormConfigurationDto>.Success(dto, "Form configuration created successfully"));
+                    ApiResponse<FormConfigurationDto>.CreateSuccess(dto, "Form configuration created successfully"));
             }
             catch (Exception ex)
             {
@@ -222,7 +222,7 @@ namespace YourProject.Controllers
 
                 _logger.LogInformation("Updated form configuration: {Id}", id);
 
-                return Ok(ApiResponse<FormConfigurationDto>.Success(dto, "Form configuration updated successfully"));
+                return Ok(ApiResponse<FormConfigurationDto>.CreateSuccess(dto, "Form configuration updated successfully"));
             }
             catch (Exception ex)
             {
@@ -259,7 +259,7 @@ namespace YourProject.Controllers
 
                 _logger.LogInformation("Deleted form configuration: {Id}", id);
 
-                return Ok(ApiResponse<object>.Success(null, "Form configuration deleted successfully"));
+                return Ok(ApiResponse<object>.CreateSuccess(null, "Form configuration deleted successfully"));
             }
             catch (Exception ex)
             {
@@ -316,7 +316,7 @@ namespace YourProject.Controllers
                 _logger.LogInformation("Created deployment for form configuration: {FormId}, Deployment: {DeploymentId}", 
                     id, savedDeployment.Id);
 
-                return Ok(ApiResponse<FormDeploymentDto>.Success(dto, "Deployment created and pending review"));
+                return Ok(ApiResponse<FormDeploymentDto>.CreateSuccess(dto, "Deployment created and pending review"));
             }
             catch (Exception ex)
             {
@@ -379,7 +379,7 @@ namespace YourProject.Controllers
                 _logger.LogInformation("Reviewed deployment: {DeploymentId}, Approved: {Approved}", 
                     deploymentId, request.Approved);
 
-                return Ok(ApiResponse<FormDeploymentDto>.Success(dto, 
+                return Ok(ApiResponse<FormDeploymentDto>.CreateSuccess(dto, 
                     request.Approved ? "Deployment approved and executed" : "Deployment rejected"));
             }
             catch (Exception ex)
@@ -400,7 +400,7 @@ namespace YourProject.Controllers
                 var deployments = await _formService.GetDeploymentHistoryAsync(id);
                 var dtos = deployments.Select(MapDeploymentToDto).ToList();
 
-                return Ok(ApiResponse<List<FormDeploymentDto>>.Success(dtos));
+                return Ok(ApiResponse<List<FormDeploymentDto>>.CreateSuccess(dtos));
             }
             catch (Exception ex)
             {
@@ -474,7 +474,7 @@ namespace YourProject.Controllers
                 _logger.LogInformation("Created form submission: {SubmissionId} for requirement: {RequirementId}", 
                     savedSubmission.Id, request.RequirementId);
 
-                return Ok(ApiResponse<FormSubmissionDto>.Success(dto, "Form submitted successfully"));
+                return Ok(ApiResponse<FormSubmissionDto>.CreateSuccess(dto, "Form submitted successfully"));
             }
             catch (Exception ex)
             {
@@ -500,7 +500,7 @@ namespace YourProject.Controllers
                 }
 
                 var dto = MapSubmissionToDto(submission);
-                return Ok(ApiResponse<FormSubmissionDto>.Success(dto));
+                return Ok(ApiResponse<FormSubmissionDto>.CreateSuccess(dto));
             }
             catch (Exception ex)
             {
@@ -525,7 +525,7 @@ namespace YourProject.Controllers
                 var validationResult = await _formService.ValidateFormConfigurationAsync(formData);
                 var dto = MapValidationResultToDto(validationResult);
 
-                return Ok(ApiResponse<FormValidationResultDto>.Success(dto));
+                return Ok(ApiResponse<FormValidationResultDto>.CreateSuccess(dto));
             }
             catch (Exception ex)
             {
@@ -549,7 +549,7 @@ namespace YourProject.Controllers
                 var steps = await _workflowService.GetWorkflowStepsAsync(requirementType);
                 var dtos = steps.Select(s => new WorkflowStepDto { Id = s.Id, Name = s.Name }).ToList();
 
-                return Ok(ApiResponse<List<WorkflowStepDto>>.Success(dtos));
+                return Ok(ApiResponse<List<WorkflowStepDto>>.CreateSuccess(dtos));
             }
             catch (Exception ex)
             {
