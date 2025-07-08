@@ -312,8 +312,13 @@ namespace YourProject.Models.Forms
         public string? SortDirection { get; set; } = "asc";
     }
 
-    public class PaginatedResponse<T> : ApiResponse<List<T>>
+    public class PaginatedResponse<T>
     {
+        public bool Success { get; set; }
+        public List<T>? Data { get; set; }
+        public string? Message { get; set; }
+        public List<string>? Errors { get; set; }
+        public ResponseMetadata? Metadata { get; set; }
         public PaginationInfo Pagination { get; set; } = new();
 
         public static PaginatedResponse<T> Success(
@@ -347,6 +352,24 @@ namespace YourProject.Models.Forms
                 }
             };
         }
+
+        public static PaginatedResponse<T> Error(string message, List<string>? errors = null)
+        {
+            return new PaginatedResponse<T>
+            {
+                Success = false,
+                Message = message,
+                Errors = errors ?? new List<string>(),
+                Data = new List<T>(),
+                Pagination = new PaginationInfo(),
+                Metadata = new ResponseMetadata
+                {
+                    RequestId = Guid.NewGuid().ToString(),
+                    Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    Version = "1.0.0"
+                }
+            };
+        }
     }
 
     public class PaginationInfo
@@ -357,6 +380,21 @@ namespace YourProject.Models.Forms
         public int TotalPages { get; set; }
         public bool HasNext { get; set; }
         public bool HasPrevious { get; set; }
+    }
+
+    // ====================================
+    // SEARCH & FILTERING DTOs
+    // ====================================
+
+    public class SearchFormConfigurationsRequest
+    {
+        public string? Query { get; set; }
+        public List<string>? RequirementTypes { get; set; }
+        public bool? IncludeInactive { get; set; }
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
+        public string? SortBy { get; set; }
+        public string? SortDirection { get; set; } = "asc";
     }
 
     // ====================================
