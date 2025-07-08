@@ -9,17 +9,17 @@ namespace YourProject.Models.Forms
 
     public class ApiResponse<T>
     {
-        public bool Success { get; set; }
+        public bool IsSuccess { get; set; }
         public T? Data { get; set; }
         public string? Message { get; set; }
         public List<string>? Errors { get; set; }
         public ResponseMetadata? Metadata { get; set; }
 
-        public static ApiResponse<T> Success(T? data, string? message = null)
+        public static ApiResponse<T> Ok(T? data, string? message = null)
         {
             return new ApiResponse<T>
             {
-                Success = true,
+                IsSuccess = true,
                 Data = data,
                 Message = message,
                 Metadata = new ResponseMetadata
@@ -35,7 +35,7 @@ namespace YourProject.Models.Forms
         {
             return new ApiResponse<T>
             {
-                Success = false,
+                IsSuccess = false,
                 Message = message,
                 Errors = errors ?? new List<string>(),
                 Metadata = new ResponseMetadata
