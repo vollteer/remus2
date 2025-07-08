@@ -4,7 +4,7 @@ using Newtonsoft.Json;
 namespace YourProject.Models.Forms
 {
     // ====================================
-    // API RESPONSE WRAPPER
+    // API RESPONSE WRAPPER - COMPLETELY CLEAN
     // ====================================
 
     public class ApiResponse<T>
@@ -15,7 +15,7 @@ namespace YourProject.Models.Forms
         public List<string>? Errors { get; set; }
         public ResponseMetadata? Metadata { get; set; }
 
-        public static ApiResponse<T> Ok(T? data, string? message = null)
+        public static ApiResponse<T> CreateSuccess(T? data, string? message = null)
         {
             return new ApiResponse<T>
             {
@@ -31,7 +31,7 @@ namespace YourProject.Models.Forms
             };
         }
 
-        public static ApiResponse<T> Error(string message, List<string>? errors = null)
+        public static ApiResponse<T> CreateError(string message, List<string>? errors = null)
         {
             return new ApiResponse<T>
             {
@@ -54,6 +54,87 @@ namespace YourProject.Models.Forms
         public string Timestamp { get; set; } = string.Empty;
         public string Version { get; set; } = string.Empty;
         public long ProcessingTimeMs { get; set; }
+    }
+
+    // ====================================
+    // PAGINATION WRAPPER - COMPLETELY CLEAN
+    // ====================================
+
+    public class PaginatedData<T>
+    {
+        public List<T> Items { get; set; } = new();
+        public PaginationInfo Pagination { get; set; } = new();
+    }
+
+    public class PaginatedResponse<T> : ApiResponse<PaginatedData<T>>
+    {
+        public static PaginatedResponse<T> CreatePaginatedSuccess(
+            List<T> items, 
+            int page, 
+            int pageSize, 
+            int totalCount,
+            string? message = null)
+        {
+            var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
+            
+            var paginatedData = new PaginatedData<T>
+            {
+                Items = items,
+                Pagination = new PaginationInfo
+                {
+                    Page = page,
+                    PageSize = pageSize,
+                    TotalCount = totalCount,
+                    TotalPages = totalPages,
+                    HasNext = page < totalPages,
+                    HasPrevious = page > 1
+                }
+            };
+
+            return new PaginatedResponse<T>
+            {
+                IsSuccess = true,
+                Data = paginatedData,
+                Message = message,
+                Metadata = new ResponseMetadata
+                {
+                    RequestId = Guid.NewGuid().ToString(),
+                    Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    Version = "1.0.0"
+                }
+            };
+        }
+
+        public static PaginatedResponse<T> CreatePaginatedError(string message, List<string>? errors = null)
+        {
+            return new PaginatedResponse<T>
+            {
+                IsSuccess = false,
+                Message = message,
+                Errors = errors ?? new List<string>(),
+                Data = new PaginatedData<T>
+                {
+                    Items = new List<T>(),
+                    Pagination = new PaginationInfo()
+                },
+                Metadata = new ResponseMetadata
+                {
+                    RequestId = Guid.NewGuid().ToString(),
+                    Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                    Version = "1.0.0"
+                }
+            };
+        }
+    }
+
+    public class PaginationInfo
+    {
+        public int Page { get; set; }
+        public int PageSize { get; set; }
+        public int TotalCount { get; set; }
+        public int TotalPages { get; set; }
+        public bool HasNext { get; set; }
+        public bool HasPrevious { get; set; }
     }
 
     // ====================================
@@ -295,91 +376,6 @@ namespace YourProject.Models.Forms
     {
         public string Id { get; set; } = string.Empty;
         public string Name { get; set; } = string.Empty;
-    }
-
-    // ====================================
-    // SEARCH & FILTERING DTOs
-    // ====================================
-
-    public class SearchFormConfigurationsRequest
-    {
-        public string? Query { get; set; }
-        public List<string>? RequirementTypes { get; set; }
-        public bool? IncludeInactive { get; set; }
-        public int Page { get; set; } = 1;
-        public int PageSize { get; set; } = 20;
-        public string? SortBy { get; set; }
-        public string? SortDirection { get; set; } = "asc";
-    }
-
-    public class PaginatedResponse<T>
-    {
-        public bool Success { get; set; }
-        public List<T>? Data { get; set; }
-        public string? Message { get; set; }
-        public List<string>? Errors { get; set; }
-        public ResponseMetadata? Metadata { get; set; }
-        public PaginationInfo Pagination { get; set; } = new();
-
-        public static PaginatedResponse<T> Success(
-            List<T> data, 
-            int page, 
-            int pageSize, 
-            int totalCount,
-            string? message = null)
-        {
-            var totalPages = (int)Math.Ceiling((double)totalCount / pageSize);
-            
-            return new PaginatedResponse<T>
-            {
-                Success = true,
-                Data = data,
-                Message = message,
-                Pagination = new PaginationInfo
-                {
-                    Page = page,
-                    PageSize = pageSize,
-                    TotalCount = totalCount,
-                    TotalPages = totalPages,
-                    HasNext = page < totalPages,
-                    HasPrevious = page > 1
-                },
-                Metadata = new ResponseMetadata
-                {
-                    RequestId = Guid.NewGuid().ToString(),
-                    Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-                    Version = "1.0.0"
-                }
-            };
-        }
-
-        public static PaginatedResponse<T> Error(string message, List<string>? errors = null)
-        {
-            return new PaginatedResponse<T>
-            {
-                Success = false,
-                Message = message,
-                Errors = errors ?? new List<string>(),
-                Data = new List<T>(),
-                Pagination = new PaginationInfo(),
-                Metadata = new ResponseMetadata
-                {
-                    RequestId = Guid.NewGuid().ToString(),
-                    Timestamp = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
-                    Version = "1.0.0"
-                }
-            };
-        }
-    }
-
-    public class PaginationInfo
-    {
-        public int Page { get; set; }
-        public int PageSize { get; set; }
-        public int TotalCount { get; set; }
-        public int TotalPages { get; set; }
-        public bool HasNext { get; set; }
-        public bool HasPrevious { get; set; }
     }
 
     // ====================================
