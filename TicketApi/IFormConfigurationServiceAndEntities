@@ -557,4 +557,373 @@ namespace YourProject.Services.Implementation
                         result.Errors.Add(new ValidationError
                         {
                             Field = fieldName,
-                            Message = $
+                            Message = $"Field '{field.label}' is required",
+                            Code = "REQUIRED_FIELD_MISSING"
+                        });
+                        result.IsValid = false;
+                    }
+                }
+
+                // Additional field-specific validation could go here...
+
+            }
+            catch (Exception ex)
+            {
+                result.Errors.Add(new ValidationError
+                {
+                    Field = "submission",
+                    Message = $"Validation error: {ex.Message}",
+                    Code = "VALIDATION_ERROR"
+                });
+                result.IsValid = false;
+            }
+
+            return result;
+        }
+
+        // ==================== ANALYTICS & USAGE ====================
+
+        public async Task<object> GetFormUsageStatsAsync(Guid formConfigurationId, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+            var end = endDate ?? DateTime.UtcNow;
+
+            var submissions = await _context.FormSubmissions
+                .Where(fs => fs.FormConfigurationId == formConfigurationId 
+                    && fs.CreatedAt >= start 
+                    && fs.CreatedAt <= end)
+                .ToListAsync();
+
+            return new
+            {
+                formConfigurationId = formConfigurationId.ToString(),
+                totalSubmissions = submissions.Count,
+                uniqueUsers = submissions.Select(s => s.CreatedBy).Distinct().Count(),
+                averageCompletionTime = 0, // Would calculate from submission data
+                abandonmentRate = 0.0,
+                conversionRate = submissions.Count(s => s.Status == "submitted") / (double)submissions.Count * 100,
+                lightModeUsage = submissions.Count(s => s.IsLightMode) / (double)submissions.Count * 100,
+                fieldAnalytics = new List<object>(),
+                mostUsedFields = new List<string>(),
+                leastUsedFields = new List<string>(),
+                errorFrequency = new List<object>(),
+                usageTrend = new List<object>(),
+                deviceBreakdown = new { desktop = 70, mobile = 25, tablet = 5 },
+                browserBreakdown = new Dictionary<string, int>()
+            };
+        }
+
+        // ==================== TEMPLATES ====================
+
+        public async Task<List<object>> GetFormTemplatesAsync(string? category = null)
+        {
+            // This would typically come from a templates table
+            // For now, return some mock templates
+            var templates = new List<object>
+            {
+                new
+                {
+                    id = "template-basic",
+                    name = "Basic Request Form",
+                    description = "Standard form for basic requirements",
+                    category = "standard",
+                    requirementType = "Kleinanforderung",
+                    usageCount = 25,
+                    isPublic = true
+                }
+            };
+
+            return category == null ? templates : templates.Where(t => ((dynamic)t).category == category).ToList();
+        }
+
+        public async Task<FormConfiguration> CreateFormFromTemplateAsync(
+            Guid templateId, 
+            string name, 
+            string requirementType, 
+            Dictionary<string, object>? fieldMappings = null)
+        {
+            // Load template and create new form configuration
+            // This is a simplified implementation
+            var newConfig = new FormConfiguration
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                RequirementType = requirementType,
+                ConfigurationData = "{}",
+                Version = 1,
+                IsActive = true,
+                HasLightMode = true,
+                CreatedAt = DateTime.UtcNow,
+                ModifiedAt = DateTime.UtcNow,
+                CreatedBy = _currentUserService.GetCurrentUserName()
+            };
+
+            return await CreateFormConfigurationAsync(newConfig);
+        }
+
+        // ==================== PERMISSIONS ====================
+
+        public async Task<object> GetFormPermissionsAsync(Guid formConfigurationId, string currentUserId)
+        {
+            var userRoles = _currentUserService.GetCurrentUserRoles();
+            
+            // This would typically check against the form's permission configuration
+            // and the user's roles to determine what they can do
+            return new
+            {
+                canView = true,
+                canEdit = userRoles.Contains("Administrator") || userRoles.Contains("Manager"),
+                canDeploy = userRoles.Contains("Administrator") || userRoles.Contains("Approver"),
+                canDelete = userRoles.Contains("Administrator"),
+                restrictedFields = new List<string>()
+            };
+        }
+
+        // ==================== IMPORT/EXPORT ====================
+
+        public async Task<byte[]> ExportFormConfigurationAsync(Guid formConfigurationId, string format)
+        {
+            var config = await GetFormConfigurationByIdAsync(formConfigurationId, _currentUserService.GetCurrentUserId());
+            if (config == null)
+            {
+                throw new InvalidOperationException("Form configuration not found");
+            }
+
+            if (format.ToLower() == "json")
+            {
+                var jsonString = JsonConvert.SerializeObject(config, Formatting.Indented);
+                return System.Text.Encoding.UTF8.GetBytes(jsonString);
+            }
+            else if (format.ToLower() == "excel")
+            {
+                // Would implement Excel export here
+                throw new NotImplementedException("Excel export not yet implemented");
+            }
+
+            throw new ArgumentException($"Unsupported export format: {format}");
+        }
+
+        public async Task<object> ImportFormConfigurationAsync(Stream fileStream, bool overwriteExisting, bool validateOnly)
+        {
+            var importedForms = new List<FormConfiguration>();
+            var errors = new List<string>();
+
+            try
+            {
+                using var reader = new StreamReader(fileStream);
+                var content = await reader.ReadToEndAsync();
+                
+                var importedData = JsonConvert.DeserializeObject<FormConfiguration[]>(content);
+                
+                if (importedData == null)
+                {
+                    errors.Add("Invalid file format");
+                    return new { success = false, importedForms, errors };
+                }
+
+                foreach (var config in importedData)
+                {
+                    try
+                    {
+                        // Validate configuration
+                        var validationResult = await ValidateFormConfigurationAsync(config.ConfigurationData);
+                        if (!validationResult.IsValid)
+                        {
+                            errors.Add($"Validation failed for '{config.Name}': {string.Join(", ", validationResult.Errors.Select(e => e.Message))}");
+                            continue;
+                        }
+
+                        if (!validateOnly)
+                        {
+                            // Check if exists
+                            var existing = await _context.FormConfigurations
+                                .FirstOrDefaultAsync(fc => fc.RequirementType == config.RequirementType && fc.Name == config.Name);
+
+                            if (existing != null && !overwriteExisting)
+                            {
+                                errors.Add($"Form '{config.Name}' already exists for requirement type '{config.RequirementType}'");
+                                continue;
+                            }
+
+                            // Create or update
+                            config.Id = Guid.NewGuid();
+                            config.CreatedAt = DateTime.UtcNow;
+                            config.ModifiedAt = DateTime.UtcNow;
+                            config.CreatedBy = _currentUserService.GetCurrentUserName();
+
+                            if (existing != null)
+                            {
+                                // Update existing
+                                existing.ConfigurationData = config.ConfigurationData;
+                                existing.ModifiedAt = DateTime.UtcNow;
+                                existing.Version++;
+                                importedForms.Add(existing);
+                            }
+                            else
+                            {
+                                // Create new
+                                var created = await CreateFormConfigurationAsync(config);
+                                importedForms.Add(created);
+                            }
+                        }
+                        else
+                        {
+                            importedForms.Add(config);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"Error processing '{config.Name}': {ex.Message}");
+                    }
+                }
+
+                return new
+                {
+                    success = errors.Count == 0,
+                    importedForms,
+                    errors
+                };
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"Import failed: {ex.Message}");
+                return new { success = false, importedForms, errors };
+            }
+        }
+
+        // ==================== HELPER METHODS ====================
+
+        private string ApplyPermissionFiltering(string configurationData, List<string> userRoles)
+        {
+            try
+            {
+                var config = JsonConvert.DeserializeObject<dynamic>(configurationData);
+                
+                // Filter fields based on user roles
+                if (config?.fields != null)
+                {
+                    var filteredFields = new List<dynamic>();
+                    foreach (var field in config.fields)
+                    {
+                        var permissions = field.permissions;
+                        if (permissions != null)
+                        {
+                            var allowedRoles = JsonConvert.DeserializeObject<List<string>>(permissions.allowedRoles?.ToString() ?? "[]");
+                            var hideFromRoles = JsonConvert.DeserializeObject<List<string>>(permissions.hideFromRoles?.ToString() ?? "[]");
+                            
+                            // Check if user should see this field
+                            var hasAllowedRole = allowedRoles.Count == 0 || allowedRoles.Any(role => userRoles.Contains(role));
+                            var isHidden = hideFromRoles.Any(role => userRoles.Contains(role));
+                            
+                            if (hasAllowedRole && !isHidden)
+                            {
+                                // Check if field should be read-only
+                                var readOnlyRoles = JsonConvert.DeserializeObject<List<string>>(permissions.readOnlyRoles?.ToString() ?? "[]");
+                                if (readOnlyRoles.Any(role => userRoles.Contains(role)))
+                                {
+                                    field.disabled = true;
+                                }
+                                
+                                filteredFields.Add(field);
+                            }
+                        }
+                        else
+                        {
+                            filteredFields.Add(field);
+                        }
+                    }
+                    config.fields = filteredFields;
+                }
+
+                return JsonConvert.SerializeObject(config);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to apply permission filtering, returning original configuration");
+                return configurationData;
+            }
+        }
+    }
+
+    // ==================== CURRENT USER SERVICE IMPLEMENTATION ====================
+
+    public class CurrentUserService : ICurrentUserService
+    {
+        private readonly IHttpContextAccessor _httpContextAccessor;
+
+        public CurrentUserService(IHttpContextAccessor httpContextAccessor)
+        {
+            _httpContextAccessor = httpContextAccessor;
+        }
+
+        public string GetCurrentUserId()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            return context?.User?.FindFirst("sub")?.Value 
+                ?? context?.User?.FindFirst("id")?.Value 
+                ?? "unknown";
+        }
+
+        public string GetCurrentUserName()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            return context?.User?.FindFirst("name")?.Value 
+                ?? context?.User?.FindFirst("username")?.Value 
+                ?? context?.User?.Identity?.Name 
+                ?? "Unknown User";
+        }
+
+        public List<string> GetCurrentUserRoles()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            return context?.User?.FindAll("role")?.Select(c => c.Value).ToList() 
+                ?? new List<string>();
+        }
+    }
+
+    // ==================== SIMPLE WORKFLOW SERVICE IMPLEMENTATION ====================
+
+    public class WorkflowService : IWorkflowService
+    {
+        private readonly ApplicationDbContext _context;
+
+        public WorkflowService(ApplicationDbContext context)
+        {
+            _context = context;
+        }
+
+        public async Task<List<WorkflowStep>> GetWorkflowStepsAsync(string requirementType)
+        {
+            // This would typically query your WorkflowConfigurations table
+            // For now, return some mock data
+            await Task.Delay(1); // Simulate async operation
+
+            return requirementType switch
+            {
+                "Kleinanforderung" => new List<WorkflowStep>
+                {
+                    new() { Id = "step-1", Name = "Erfassung" },
+                    new() { Id = "step-2", Name = "Fachliche Prüfung" },
+                    new() { Id = "step-3", Name = "Genehmigung" },
+                    new() { Id = "step-4", Name = "Umsetzung" }
+                },
+                "Großanforderung" => new List<WorkflowStep>
+                {
+                    new() { Id = "step-1", Name = "Erfassung" },
+                    new() { Id = "step-2", Name = "Fachliche Prüfung" },
+                    new() { Id = "step-3", Name = "Technische Prüfung" },
+                    new() { Id = "step-4", Name = "Management Genehmigung" },
+                    new() { Id = "step-5", Name = "Umsetzung" },
+                    new() { Id = "step-6", Name = "Testing" },
+                    new() { Id = "step-7", Name = "Deployment" }
+                },
+                _ => new List<WorkflowStep>
+                {
+                    new() { Id = "step-1", Name = "Erfassung" },
+                    new() { Id = "step-2", Name = "Bearbeitung" },
+                    new() { Id = "step-3", Name = "Abschluss" }
+                }
+            };
+        }
+    }
+}
