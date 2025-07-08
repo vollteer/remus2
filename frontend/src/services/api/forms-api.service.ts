@@ -1,3 +1,5 @@
+// src/services/api/forms-api.service.ts
+
 import type {
   FormConfiguration,
   FormDeployment,
@@ -191,7 +193,7 @@ class FormsApiService extends BaseApiClient {
     try {
       const response = await this.post<FormConfiguration>('/forms/configuration', formData);
       
-      if (!response.success || !response.data) {
+                    if (!response.isSuccess || !response.data) {
         throw new Error(response.message || 'Failed to create form configuration');
       }
       
@@ -214,7 +216,7 @@ class FormsApiService extends BaseApiClient {
         formData
       );
       
-      if (!response.success || !response.data) {
+                    if (!response.isSuccess || !response.data) {
         throw new Error(response.message || 'Failed to update form configuration');
       }
       
@@ -232,7 +234,7 @@ class FormsApiService extends BaseApiClient {
     try {
       const response = await this.delete<void>(`/forms/configuration/${id}`);
       
-      if (!response.success) {
+                    if (!response.isSuccess) {
         throw new Error(response.message || 'Failed to delete form configuration');
       }
     } catch (error) {
