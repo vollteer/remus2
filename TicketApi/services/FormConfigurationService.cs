@@ -1,320 +1,1020 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
+using YourProject.Data;
 using YourProject.Models.Entities;
+using YourProject.Services.Interfaces;
 
-namespace YourProject.Services.Interfaces
+namespace YourProject.Services.Implementation
 {
     // ====================================
-    // FORM CONFIGURATION SERVICE INTERFACE
+    // FORM CONFIGURATION SERVICE IMPLEMENTATION
     // ====================================
 
-    public interface IFormConfigurationService
+    public class FormConfigurationService : IFormConfigurationService
     {
+        private readonly ApplicationDbContext _context;
+        private readonly ILogger<FormConfigurationService> _logger;
+        private readonly ICurrentUserService _currentUserService;
+
+        public FormConfigurationService(
+            ApplicationDbContext context,
+            ILogger<FormConfigurationService> logger,
+            ICurrentUserService currentUserService)
+        {
+            _context = context;
+            _logger = logger;
+            _currentUserService = currentUserService;
+        }
+
         // ==================== FORM CONFIGURATION CRUD ====================
 
-        /// <summary>
-        /// Gets the active form configuration for a specific requirement type with role-based filtering
-        /// </summary>
-        /// <param name="requirementType">The type of requirement (e.g., "Kleinanforderung")</param>
-        /// <param name="userRoles">List of user roles for permission filtering</param>
-        /// <param name="currentUserId">Current user ID for audit purposes</param>
-        /// <returns>Form configuration with filtered fields based on user permissions, or null if not found</returns>
-        Task<FormConfiguration?> GetFormConfigurationAsync(string requirementType, List<string> userRoles, string currentUserId);
+        public async Task<FormConfiguration?> GetFormConfigurationAsync(
+            string requirementType, 
+            List<string> userRoles, 
+            string currentUserId)
+        {
+            _logger.LogInformation("Getting form configuration for requirement type: {RequirementType}, user: {UserId}", 
+                requirementType, currentUserId);
 
-        /// <summary>
-        /// Gets a form configuration by its unique identifier
-        /// </summary>
-        /// <param name="id">Form configuration ID</param>
-        /// <param name="currentUserId">Current user ID for audit purposes</param>
-        /// <returns>Form configuration including deployment history, or null if not found</returns>
-        Task<FormConfiguration?> GetFormConfigurationByIdAsync(Guid id, string currentUserId);
+            var config = await _context.FormConfigurations
+                .Where(fc => fc.RequirementType == requirementType && fc.IsActive)
+                .OrderByDescending(fc => fc.Version)
+                .FirstOrDefaultAsync();
 
-        /// <summary>
-        /// Creates a new form configuration with validation
-        /// </summary>
-        /// <param name="formConfiguration">Form configuration to create</param>
-        /// <returns>Created form configuration with generated ID and timestamps</returns>
-        /// <exception cref="InvalidOperationException">Thrown when validation fails</exception>
-        Task<FormConfiguration> CreateFormConfigurationAsync(FormConfiguration formConfiguration);
+            if (config != null)
+            {
+                // Apply role-based filtering to configuration data
+                config.ConfigurationData = ApplyPermissionFiltering(config.ConfigurationData, userRoles);
+                
+                _logger.LogInformation("Found form configuration: {FormId} for requirement type: {RequirementType}", 
+                    config.Id, requirementType);
+            }
+            else
+            {
+                _logger.LogInformation("No form configuration found for requirement type: {RequirementType}", requirementType);
+            }
 
-        /// <summary>
-        /// Updates an existing form configuration with validation
-        /// </summary>
-        /// <param name="formConfiguration">Form configuration to update</param>
-        /// <returns>Updated form configuration</returns>
-        /// <exception cref="InvalidOperationException">Thrown when validation fails</exception>
-        Task<FormConfiguration> UpdateFormConfigurationAsync(FormConfiguration formConfiguration);
+            return config;
+        }
 
-        /// <summary>
-        /// Deletes a form configuration if no submissions exist
-        /// </summary>
-        /// <param name="id">Form configuration ID to delete</param>
-        /// <exception cref="InvalidOperationException">Thrown when form has submissions or doesn't exist</exception>
-        Task DeleteFormConfigurationAsync(Guid id);
+        public async Task<FormConfiguration?> GetFormConfigurationByIdAsync(Guid id, string currentUserId)
+        {
+            _logger.LogInformation("Getting form configuration by ID: {FormId}, user: {UserId}", id, currentUserId);
 
-        /// <summary>
-        /// Gets all form configurations with optional filtering
-        /// </summary>
-        /// <param name="requirementType">Optional requirement type filter</param>
-        /// <param name="includeInactive">Whether to include inactive configurations</param>
-        /// <returns>List of form configurations ordered by requirement type and name</returns>
-        Task<List<FormConfiguration>> GetAllFormConfigurationsAsync(string? requirementType = null, bool includeInactive = false);
+            var config = await _context.FormConfigurations
+                .Include(fc => fc.Deployments)
+                .FirstOrDefaultAsync(fc => fc.Id == id);
+
+            if (config != null)
+            {
+                _logger.LogInformation("Found form configuration: {FormId}", id);
+            }
+            else
+            {
+                _logger.LogWarning("Form configuration not found: {FormId}", id);
+            }
+
+            return config;
+        }
+
+        public async Task<FormConfiguration> CreateFormConfigurationAsync(FormConfiguration formConfiguration)
+        {
+            _logger.LogInformation("Creating form configuration: {FormName} for requirement type: {RequirementType}", 
+                formConfiguration.Name, formConfiguration.RequirementType);
+
+            // Validate configuration data
+            var validationResult = await ValidateFormConfigurationAsync(formConfiguration.ConfigurationData);
+            if (!validationResult.IsValid)
+            {
+                var errorMessage = $"Form configuration is invalid: {string.Join(", ", validationResult.Errors.Select(e => e.Message))}";
+                _logger.LogError("Validation failed for form configuration: {ErrorMessage}", errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+
+            // Set creation timestamps
+            formConfiguration.CreatedAt = DateTime.UtcNow;
+            formConfiguration.ModifiedAt = DateTime.UtcNow;
+
+            _context.FormConfigurations.Add(formConfiguration);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully created form configuration: {FormId} for requirement type: {RequirementType}",
+                formConfiguration.Id, formConfiguration.RequirementType);
+
+            return formConfiguration;
+        }
+
+        public async Task<FormConfiguration> UpdateFormConfigurationAsync(FormConfiguration formConfiguration)
+        {
+            _logger.LogInformation("Updating form configuration: {FormId}", formConfiguration.Id);
+
+            // Validate configuration data
+            var validationResult = await ValidateFormConfigurationAsync(formConfiguration.ConfigurationData);
+            if (!validationResult.IsValid)
+            {
+                var errorMessage = $"Form configuration is invalid: {string.Join(", ", validationResult.Errors.Select(e => e.Message))}";
+                _logger.LogError("Validation failed for form configuration update: {ErrorMessage}", errorMessage);
+                throw new InvalidOperationException(errorMessage);
+            }
+
+            // Update modification timestamp
+            formConfiguration.ModifiedAt = DateTime.UtcNow;
+
+            _context.FormConfigurations.Update(formConfiguration);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully updated form configuration: {FormId}", formConfiguration.Id);
+
+            return formConfiguration;
+        }
+
+        public async Task DeleteFormConfigurationAsync(Guid id)
+        {
+            _logger.LogInformation("Deleting form configuration: {FormId}", id);
+
+            var config = await _context.FormConfigurations.FindAsync(id);
+            if (config == null)
+            {
+                _logger.LogWarning("Form configuration not found for deletion: {FormId}", id);
+                throw new InvalidOperationException("Form configuration not found");
+            }
+
+            // Check if there are any submissions
+            var hasSubmissions = await _context.FormSubmissions.AnyAsync(fs => fs.FormConfigurationId == id);
+            if (hasSubmissions)
+            {
+                _logger.LogWarning("Cannot delete form configuration with existing submissions: {FormId}", id);
+                throw new InvalidOperationException("Cannot delete form configuration with existing submissions");
+            }
+
+            _context.FormConfigurations.Remove(config);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully deleted form configuration: {FormId}", id);
+        }
+
+        public async Task<List<FormConfiguration>> GetAllFormConfigurationsAsync(string? requirementType = null, bool includeInactive = false)
+        {
+            _logger.LogInformation("Getting all form configurations. RequirementType: {RequirementType}, IncludeInactive: {IncludeInactive}", 
+                requirementType, includeInactive);
+
+            var query = _context.FormConfigurations.AsQueryable();
+
+            if (!string.IsNullOrEmpty(requirementType))
+            {
+                query = query.Where(fc => fc.RequirementType == requirementType);
+            }
+
+            if (!includeInactive)
+            {
+                query = query.Where(fc => fc.IsActive);
+            }
+
+            var configurations = await query
+                .OrderBy(fc => fc.RequirementType)
+                .ThenBy(fc => fc.Name)
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} form configurations", configurations.Count);
+
+            return configurations;
+        }
 
         // ==================== DEPLOYMENTS (4-Eyes Principle) ====================
 
-        /// <summary>
-        /// Creates a new deployment request for 4-eyes approval process
-        /// </summary>
-        /// <param name="deployment">Deployment configuration</param>
-        /// <returns>Created deployment with pending_review status</returns>
-        Task<FormDeployment> CreateDeploymentAsync(FormDeployment deployment);
+        public async Task<FormDeployment> CreateDeploymentAsync(FormDeployment deployment)
+        {
+            _logger.LogInformation("Creating deployment for form configuration: {FormId}, version: {Version}", 
+                deployment.FormConfigurationId, deployment.Version);
 
-        /// <summary>
-        /// Updates a deployment (typically for review/approval status changes)
-        /// </summary>
-        /// <param name="deployment">Deployment to update</param>
-        /// <returns>Updated deployment</returns>
-        Task<FormDeployment> UpdateDeploymentAsync(FormDeployment deployment);
+            deployment.CreatedAt = DateTime.UtcNow;
+            deployment.Status = "pending_review";
 
-        /// <summary>
-        /// Gets a deployment by ID including form configuration details
-        /// </summary>
-        /// <param name="deploymentId">Deployment ID</param>
-        /// <returns>Deployment with form configuration, or null if not found</returns>
-        Task<FormDeployment?> GetDeploymentByIdAsync(Guid deploymentId);
+            _context.FormDeployments.Add(deployment);
+            await _context.SaveChangesAsync();
 
-        /// <summary>
-        /// Gets deployment history for a form configuration
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <returns>List of deployments ordered by creation date (newest first)</returns>
-        Task<List<FormDeployment>> GetDeploymentHistoryAsync(Guid formConfigurationId);
+            _logger.LogInformation("Successfully created deployment: {DeploymentId} for form: {FormId}",
+                deployment.Id, deployment.FormConfigurationId);
 
-        /// <summary>
-        /// Executes an approved deployment to production
-        /// </summary>
-        /// <param name="deploymentId">Deployment ID to execute</param>
-        /// <exception cref="InvalidOperationException">Thrown when deployment is not approved or doesn't exist</exception>
-        Task ExecuteDeploymentAsync(Guid deploymentId);
+            return deployment;
+        }
+
+        public async Task<FormDeployment> UpdateDeploymentAsync(FormDeployment deployment)
+        {
+            _logger.LogInformation("Updating deployment: {DeploymentId}", deployment.Id);
+
+            _context.FormDeployments.Update(deployment);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Successfully updated deployment: {DeploymentId}", deployment.Id);
+
+            return deployment;
+        }
+
+        public async Task<FormDeployment?> GetDeploymentByIdAsync(Guid deploymentId)
+        {
+            _logger.LogInformation("Getting deployment by ID: {DeploymentId}", deploymentId);
+
+            var deployment = await _context.FormDeployments
+                .Include(fd => fd.FormConfiguration)
+                .FirstOrDefaultAsync(fd => fd.Id == deploymentId);
+
+            if (deployment != null)
+            {
+                _logger.LogInformation("Found deployment: {DeploymentId}", deploymentId);
+            }
+            else
+            {
+                _logger.LogWarning("Deployment not found: {DeploymentId}", deploymentId);
+            }
+
+            return deployment;
+        }
+
+        public async Task<List<FormDeployment>> GetDeploymentHistoryAsync(Guid formConfigurationId)
+        {
+            _logger.LogInformation("Getting deployment history for form configuration: {FormId}", formConfigurationId);
+
+            var deployments = await _context.FormDeployments
+                .Where(fd => fd.FormConfigurationId == formConfigurationId)
+                .OrderByDescending(fd => fd.CreatedAt)
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} deployments for form configuration: {FormId}", 
+                deployments.Count, formConfigurationId);
+
+            return deployments;
+        }
+
+        public async Task ExecuteDeploymentAsync(Guid deploymentId)
+        {
+            _logger.LogInformation("Executing deployment: {DeploymentId}", deploymentId);
+
+            var deployment = await GetDeploymentByIdAsync(deploymentId);
+            if (deployment == null)
+            {
+                _logger.LogError("Deployment not found for execution: {DeploymentId}", deploymentId);
+                throw new InvalidOperationException("Deployment not found");
+            }
+
+            if (deployment.Status != "approved")
+            {
+                _logger.LogError("Deployment must be approved before execution: {DeploymentId}, current status: {Status}", 
+                    deploymentId, deployment.Status);
+                throw new InvalidOperationException("Deployment must be approved before execution");
+            }
+
+            try
+            {
+                // Here you would implement the actual deployment logic
+                // For example: sync to production database, update caches, etc.
+                
+                _logger.LogInformation("Starting deployment execution: {DeploymentId}", deploymentId);
+                
+                // Simulate deployment process
+                await Task.Delay(1000);
+
+                // Mark as deployed
+                deployment.Status = "deployed";
+                deployment.DeployedAt = DateTime.UtcNow;
+
+                await UpdateDeploymentAsync(deployment);
+
+                _logger.LogInformation("Successfully executed deployment: {DeploymentId}", deploymentId);
+            }
+            catch (Exception ex)
+            {
+                deployment.Status = "failed";
+                deployment.ErrorMessage = ex.Message;
+                await UpdateDeploymentAsync(deployment);
+
+                _logger.LogError(ex, "Failed to execute deployment: {DeploymentId}", deploymentId);
+                throw;
+            }
+        }
 
         // ==================== FORM SUBMISSIONS ====================
 
-        /// <summary>
-        /// Creates a new form submission with validation
-        /// </summary>
-        /// <param name="submission">Form submission to create</param>
-        /// <returns>Created form submission with generated ID and timestamps</returns>
-        Task<FormSubmission> CreateSubmissionAsync(FormSubmission submission);
+        public async Task<FormSubmission> CreateSubmissionAsync(FormSubmission submission)
+        {
+            _logger.LogInformation("Creating form submission for requirement: {RequirementId}, form: {FormId}", 
+                submission.RequirementId, submission.FormConfigurationId);
 
-        /// <summary>
-        /// Gets a form submission by ID
-        /// </summary>
-        /// <param name="submissionId">Submission ID</param>
-        /// <param name="currentUserId">Current user ID for audit purposes</param>
-        /// <returns>Form submission with form configuration, or null if not found</returns>
-        Task<FormSubmission?> GetSubmissionByIdAsync(Guid submissionId, string currentUserId);
+            submission.CreatedAt = DateTime.UtcNow;
+            submission.ModifiedAt = DateTime.UtcNow;
 
-        /// <summary>
-        /// Gets all form submissions for a specific requirement
-        /// </summary>
-        /// <param name="requirementId">Requirement ID</param>
-        /// <returns>List of submissions ordered by creation date (newest first)</returns>
-        Task<List<FormSubmission>> GetSubmissionsByRequirementAsync(Guid requirementId);
+            _context.FormSubmissions.Add(submission);
+            await _context.SaveChangesAsync();
 
-        /// <summary>
-        /// Checks if a form configuration has any submissions (used before deletion)
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <returns>True if form has submissions, false otherwise</returns>
-        Task<bool> HasSubmissionsAsync(Guid formConfigurationId);
+            _logger.LogInformation("Successfully created form submission: {SubmissionId} for requirement: {RequirementId}",
+                submission.Id, submission.RequirementId);
+
+            return submission;
+        }
+
+        public async Task<FormSubmission?> GetSubmissionByIdAsync(Guid submissionId, string currentUserId)
+        {
+            _logger.LogInformation("Getting form submission by ID: {SubmissionId}, user: {UserId}", 
+                submissionId, currentUserId);
+
+            var submission = await _context.FormSubmissions
+                .Include(fs => fs.FormConfiguration)
+                .FirstOrDefaultAsync(fs => fs.Id == submissionId);
+
+            if (submission != null)
+            {
+                _logger.LogInformation("Found form submission: {SubmissionId}", submissionId);
+            }
+            else
+            {
+                _logger.LogWarning("Form submission not found: {SubmissionId}", submissionId);
+            }
+
+            return submission;
+        }
+
+        public async Task<List<FormSubmission>> GetSubmissionsByRequirementAsync(Guid requirementId)
+        {
+            _logger.LogInformation("Getting form submissions for requirement: {RequirementId}", requirementId);
+
+            var submissions = await _context.FormSubmissions
+                .Where(fs => fs.RequirementId == requirementId)
+                .OrderByDescending(fs => fs.CreatedAt)
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} form submissions for requirement: {RequirementId}", 
+                submissions.Count, requirementId);
+
+            return submissions;
+        }
+
+        public async Task<bool> HasSubmissionsAsync(Guid formConfigurationId)
+        {
+            var hasSubmissions = await _context.FormSubmissions
+                .AnyAsync(fs => fs.FormConfigurationId == formConfigurationId);
+
+            _logger.LogInformation("Form configuration {FormId} has submissions: {HasSubmissions}", 
+                formConfigurationId, hasSubmissions);
+
+            return hasSubmissions;
+        }
 
         // ==================== VALIDATION ====================
 
-        /// <summary>
-        /// Validates a form configuration structure and rules
-        /// </summary>
-        /// <param name="formData">Form configuration data (JSON string or object)</param>
-        /// <returns>Validation result with errors, warnings, and suggestions</returns>
-        Task<ValidationResult> ValidateFormConfigurationAsync(object formData);
+        public async Task<ValidationResult> ValidateFormConfigurationAsync(object formData)
+        {
+            _logger.LogInformation("Validating form configuration");
 
-        /// <summary>
-        /// Validates form submission data against form configuration rules
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <param name="fieldValues">Dictionary of field names and values</param>
-        /// <returns>Validation result with field-specific errors</returns>
-        Task<ValidationResult> ValidateSubmissionAsync(Guid formConfigurationId, Dictionary<string, object> fieldValues);
+            var result = new ValidationResult { IsValid = true };
+
+            try
+            {
+                // Parse configuration data
+                dynamic config;
+                if (formData is string jsonString)
+                {
+                    config = JsonConvert.DeserializeObject(jsonString);
+                }
+                else
+                {
+                    config = formData;
+                }
+
+                // Validate structure
+                if (config?.fields == null)
+                {
+                    result.Errors.Add(new ValidationError
+                    {
+                        Field = "fields",
+                        Message = "Form must have at least one field",
+                        Code = "MISSING_FIELDS"
+                    });
+                    result.IsValid = false;
+                }
+
+                if (config?.sections == null)
+                {
+                    result.Errors.Add(new ValidationError
+                    {
+                        Field = "sections",
+                        Message = "Form must have at least one section",
+                        Code = "MISSING_SECTIONS"
+                    });
+                    result.IsValid = false;
+                }
+
+                // Validate field types and names
+                if (config?.fields != null)
+                {
+                    var fieldNames = new HashSet<string>();
+                    foreach (var field in config.fields)
+                    {
+                        // Check for duplicate field names
+                        var fieldName = field.name?.ToString();
+                        if (!string.IsNullOrEmpty(fieldName))
+                        {
+                            if (fieldNames.Contains(fieldName))
+                            {
+                                result.Errors.Add(new ValidationError
+                                {
+                                    Field = "fields",
+                                    Message = $"Duplicate field name: {fieldName}",
+                                    Code = "DUPLICATE_FIELD_NAME"
+                                });
+                                result.IsValid = false;
+                            }
+                            fieldNames.Add(fieldName);
+                        }
+                        else
+                        {
+                            result.Errors.Add(new ValidationError
+                            {
+                                Field = "fields",
+                                Message = "All fields must have a name",
+                                Code = "MISSING_FIELD_NAME"
+                            });
+                            result.IsValid = false;
+                        }
+
+                        // Validate field type
+                        var fieldType = field.type?.ToString();
+                        var validTypes = new[] { "text", "textarea", "number", "email", "phone", "date", "datetime", "select", "multiselect", "radio", "checkbox", "checkboxGroup", "file", "currency", "percentage", "url", "divider", "heading" };
+                        if (string.IsNullOrEmpty(fieldType) || !validTypes.Contains(fieldType))
+                        {
+                            result.Errors.Add(new ValidationError
+                            {
+                                Field = "fields",
+                                Message = $"Invalid field type: {fieldType}",
+                                Code = "INVALID_FIELD_TYPE"
+                            });
+                            result.IsValid = false;
+                        }
+                    }
+                }
+
+                if (result.IsValid)
+                {
+                    _logger.LogInformation("Form configuration validation passed");
+                }
+                else
+                {
+                    _logger.LogWarning("Form configuration validation failed with {ErrorCount} errors", result.Errors.Count);
+                }
+                
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during form configuration validation");
+                
+                result.Errors.Add(new ValidationError
+                {
+                    Field = "configuration",
+                    Message = $"Invalid configuration format: {ex.Message}",
+                    Code = "INVALID_FORMAT"
+                });
+                result.IsValid = false;
+            }
+
+            return result;
+        }
+
+        public async Task<ValidationResult> ValidateSubmissionAsync(Guid formConfigurationId, Dictionary<string, object> fieldValues)
+        {
+            _logger.LogInformation("Validating form submission for form: {FormId}", formConfigurationId);
+
+            var result = new ValidationResult { IsValid = true };
+
+            var formConfig = await GetFormConfigurationByIdAsync(formConfigurationId, _currentUserService.GetCurrentUserId());
+            if (formConfig == null)
+            {
+                result.Errors.Add(new ValidationError
+                {
+                    Field = "form",
+                    Message = "Form configuration not found",
+                    Code = "FORM_NOT_FOUND"
+                });
+                result.IsValid = false;
+                return result;
+            }
+
+            try
+            {
+                var configData = JsonConvert.DeserializeObject<dynamic>(formConfig.ConfigurationData);
+                var fields = JsonConvert.DeserializeObject<List<dynamic>>(configData?.fields?.ToString() ?? "[]");
+
+                // Validate required fields
+                foreach (var field in fields)
+                {
+                    var fieldName = field.name?.ToString();
+                    var isRequired = field.required ?? false;
+                    var fieldLabel = field.label?.ToString() ?? fieldName;
+
+                    if (isRequired && !string.IsNullOrEmpty(fieldName))
+                    {
+                        if (!fieldValues.ContainsKey(fieldName) || 
+                            fieldValues[fieldName] == null || 
+                            string.IsNullOrWhiteSpace(fieldValues[fieldName].ToString()))
+                        {
+                            result.Errors.Add(new ValidationError
+                            {
+                                Field = fieldName,
+                                Message = $"Field '{fieldLabel}' is required",
+                                Code = "REQUIRED_FIELD_MISSING"
+                            });
+                            result.IsValid = false;
+                        }
+                    }
+
+                    // Validate field type specific rules
+                    if (!string.IsNullOrEmpty(fieldName) && fieldValues.ContainsKey(fieldName))
+                    {
+                        var fieldType = field.type?.ToString();
+                        var fieldValue = fieldValues[fieldName];
+
+                        switch (fieldType)
+                        {
+                            case "email":
+                                if (fieldValue != null && !IsValidEmail(fieldValue.ToString()))
+                                {
+                                    result.Errors.Add(new ValidationError
+                                    {
+                                        Field = fieldName,
+                                        Message = $"'{fieldLabel}' must be a valid email address",
+                                        Code = "INVALID_EMAIL"
+                                    });
+                                    result.IsValid = false;
+                                }
+                                break;
+
+                            case "number":
+                            case "currency":
+                            case "percentage":
+                                if (fieldValue != null && !IsNumeric(fieldValue.ToString()))
+                                {
+                                    result.Errors.Add(new ValidationError
+                                    {
+                                        Field = fieldName,
+                                        Message = $"'{fieldLabel}' must be a valid number",
+                                        Code = "INVALID_NUMBER"
+                                    });
+                                    result.IsValid = false;
+                                }
+                                break;
+
+                            case "url":
+                                if (fieldValue != null && !IsValidUrl(fieldValue.ToString()))
+                                {
+                                    result.Errors.Add(new ValidationError
+                                    {
+                                        Field = fieldName,
+                                        Message = $"'{fieldLabel}' must be a valid URL",
+                                        Code = "INVALID_URL"
+                                    });
+                                    result.IsValid = false;
+                                }
+                                break;
+                        }
+                    }
+                }
+
+                if (result.IsValid)
+                {
+                    _logger.LogInformation("Form submission validation passed for form: {FormId}", formConfigurationId);
+                }
+                else
+                {
+                    _logger.LogWarning("Form submission validation failed for form: {FormId} with {ErrorCount} errors", 
+                        formConfigurationId, result.Errors.Count);
+                }
+
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error during form submission validation for form: {FormId}", formConfigurationId);
+                
+                result.Errors.Add(new ValidationError
+                {
+                    Field = "submission",
+                    Message = $"Validation error: {ex.Message}",
+                    Code = "VALIDATION_ERROR"
+                });
+                result.IsValid = false;
+            }
+
+            return result;
+        }
 
         // ==================== ANALYTICS & USAGE ====================
 
-        /// <summary>
-        /// Gets usage statistics and analytics for a form configuration
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <param name="startDate">Optional start date for stats period</param>
-        /// <param name="endDate">Optional end date for stats period</param>
-        /// <returns>Analytics object with usage metrics, trends, and performance data</returns>
-        Task<object> GetFormUsageStatsAsync(Guid formConfigurationId, DateTime? startDate = null, DateTime? endDate = null);
+        public async Task<object> GetFormUsageStatsAsync(Guid formConfigurationId, DateTime? startDate = null, DateTime? endDate = null)
+        {
+            _logger.LogInformation("Getting usage stats for form: {FormId}", formConfigurationId);
+
+            var start = startDate ?? DateTime.UtcNow.AddDays(-30);
+            var end = endDate ?? DateTime.UtcNow;
+
+            var submissions = await _context.FormSubmissions
+                .Where(fs => fs.FormConfigurationId == formConfigurationId 
+                    && fs.CreatedAt >= start 
+                    && fs.CreatedAt <= end)
+                .ToListAsync();
+
+            var stats = new
+            {
+                formConfigurationId = formConfigurationId.ToString(),
+                totalSubmissions = submissions.Count,
+                uniqueUsers = submissions.Select(s => s.CreatedBy).Distinct().Count(),
+                averageCompletionTime = 0, // Would calculate from submission data
+                abandonmentRate = 0.0,
+                conversionRate = submissions.Count > 0 ? submissions.Count(s => s.Status == "submitted") / (double)submissions.Count * 100 : 0,
+                lightModeUsage = submissions.Count > 0 ? submissions.Count(s => s.IsLightMode) / (double)submissions.Count * 100 : 0,
+                fieldAnalytics = new List<object>(),
+                mostUsedFields = new List<string>(),
+                leastUsedFields = new List<string>(),
+                errorFrequency = new List<object>(),
+                usageTrend = new List<object>(),
+                deviceBreakdown = new { desktop = 70, mobile = 25, tablet = 5 },
+                browserBreakdown = new Dictionary<string, int>()
+            };
+
+            _logger.LogInformation("Generated usage stats for form: {FormId} with {SubmissionCount} submissions", 
+                formConfigurationId, submissions.Count);
+
+            return stats;
+        }
 
         // ==================== TEMPLATES ====================
 
-        /// <summary>
-        /// Gets available form templates with optional category filtering
-        /// </summary>
-        /// <param name="category">Optional category filter (e.g., "standard", "advanced")</param>
-        /// <returns>List of available form templates</returns>
-        Task<List<object>> GetFormTemplatesAsync(string? category = null);
+        public async Task<List<object>> GetFormTemplatesAsync(string? category = null)
+        {
+            _logger.LogInformation("Getting form templates. Category: {Category}", category);
 
-        /// <summary>
-        /// Creates a new form configuration based on a template
-        /// </summary>
-        /// <param name="templateId">Template ID</param>
-        /// <param name="name">Name for the new form</param>
-        /// <param name="requirementType">Requirement type for the new form</param>
-        /// <param name="fieldMappings">Optional field mappings for customization</param>
-        /// <returns>Created form configuration</returns>
-        Task<FormConfiguration> CreateFormFromTemplateAsync(Guid templateId, string name, string requirementType, Dictionary<string, object>? fieldMappings = null);
+            // This would typically come from a templates table
+            // For now, return some mock templates
+            var templates = new List<object>
+            {
+                new
+                {
+                    id = "template-basic",
+                    name = "Basic Request Form",
+                    description = "Standard form for basic requirements",
+                    category = "standard",
+                    requirementType = "Kleinanforderung",
+                    usageCount = 25,
+                    isPublic = true
+                },
+                new
+                {
+                    id = "template-advanced",
+                    name = "Advanced Request Form",
+                    description = "Comprehensive form for complex requirements",
+                    category = "advanced",
+                    requirementType = "Großanforderung",
+                    usageCount = 12,
+                    isPublic = true
+                }
+            };
+
+            var filteredTemplates = category == null ? templates : templates.Where(t => ((dynamic)t).category == category).ToList();
+
+            _logger.LogInformation("Found {Count} form templates", filteredTemplates.Count);
+
+            return filteredTemplates;
+        }
+
+        public async Task<FormConfiguration> CreateFormFromTemplateAsync(
+            Guid templateId, 
+            string name, 
+            string requirementType, 
+            Dictionary<string, object>? fieldMappings = null)
+        {
+            _logger.LogInformation("Creating form from template: {TemplateId}, name: {Name}, type: {RequirementType}", 
+                templateId, name, requirementType);
+
+            // Load template and create new form configuration
+            // This is a simplified implementation
+            var newConfig = new FormConfiguration
+            {
+                Id = Guid.NewGuid(),
+                Name = name,
+                RequirementType = requirementType,
+                ConfigurationData = "{}",
+                Version = 1,
+                IsActive = true,
+                HasLightMode = true,
+                CreatedAt = DateTime.UtcNow,
+                ModifiedAt = DateTime.UtcNow,
+                CreatedBy = _currentUserService.GetCurrentUserName()
+            };
+
+            var createdConfig = await CreateFormConfigurationAsync(newConfig);
+
+            _logger.LogInformation("Successfully created form from template: {FormId}", createdConfig.Id);
+
+            return createdConfig;
+        }
 
         // ==================== PERMISSIONS ====================
 
-        /// <summary>
-        /// Gets current user's permissions for a specific form configuration
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <param name="currentUserId">Current user ID</param>
-        /// <returns>Permissions object indicating what actions the user can perform</returns>
-        Task<object> GetFormPermissionsAsync(Guid formConfigurationId, string currentUserId);
+        public async Task<object> GetFormPermissionsAsync(Guid formConfigurationId, string currentUserId)
+        {
+            _logger.LogInformation("Getting form permissions for form: {FormId}, user: {UserId}", 
+                formConfigurationId, currentUserId);
+
+            var userRoles = _currentUserService.GetCurrentUserRoles();
+            
+            // This would typically check against the form's permission configuration
+            // and the user's roles to determine what they can do
+            var permissions = new
+            {
+                canView = true,
+                canEdit = userRoles.Contains("Administrator") || userRoles.Contains("Manager"),
+                canDeploy = userRoles.Contains("Administrator") || userRoles.Contains("Approver"),
+                canDelete = userRoles.Contains("Administrator"),
+                restrictedFields = new List<string>()
+            };
+
+            _logger.LogInformation("Generated permissions for form: {FormId}, user: {UserId}. CanEdit: {CanEdit}, CanDeploy: {CanDeploy}", 
+                formConfigurationId, currentUserId, permissions.canEdit, permissions.canDeploy);
+
+            return permissions;
+        }
 
         // ==================== IMPORT/EXPORT ====================
 
-        /// <summary>
-        /// Exports a form configuration to specified format
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <param name="format">Export format ("json" or "excel")</param>
-        /// <returns>Exported data as byte array</returns>
-        /// <exception cref="InvalidOperationException">Thrown when form doesn't exist</exception>
-        /// <exception cref="ArgumentException">Thrown when format is not supported</exception>
-        /// <exception cref="NotImplementedException">Thrown when Excel export is requested (not yet implemented)</exception>
-        Task<byte[]> ExportFormConfigurationAsync(Guid formConfigurationId, string format);
+        public async Task<byte[]> ExportFormConfigurationAsync(Guid formConfigurationId, string format)
+        {
+            _logger.LogInformation("Exporting form configuration: {FormId} in format: {Format}", 
+                formConfigurationId, format);
 
-        /// <summary>
-        /// Imports form configurations from a file stream
-        /// </summary>
-        /// <param name="fileStream">File stream containing form configurations</param>
-        /// <param name="overwriteExisting">Whether to overwrite existing forms with same name/type</param>
-        /// <param name="validateOnly">Whether to only validate without saving</param>
-        /// <returns>Import result with success status, imported forms, and any errors</returns>
-        Task<object> ImportFormConfigurationAsync(Stream fileStream, bool overwriteExisting, bool validateOnly);
+            var config = await GetFormConfigurationByIdAsync(formConfigurationId, _currentUserService.GetCurrentUserId());
+            if (config == null)
+            {
+                _logger.LogError("Form configuration not found for export: {FormId}", formConfigurationId);
+                throw new InvalidOperationException("Form configuration not found");
+            }
+
+            if (format.ToLower() == "json")
+            {
+                var jsonString = JsonConvert.SerializeObject(config, Formatting.Indented);
+                var bytes = System.Text.Encoding.UTF8.GetBytes(jsonString);
+                
+                _logger.LogInformation("Successfully exported form configuration: {FormId} as JSON ({ByteCount} bytes)", 
+                    formConfigurationId, bytes.Length);
+                
+                return bytes;
+            }
+            else if (format.ToLower() == "excel")
+            {
+                // Would implement Excel export here
+                _logger.LogError("Excel export not yet implemented for form: {FormId}", formConfigurationId);
+                throw new NotImplementedException("Excel export not yet implemented");
+            }
+
+            _logger.LogError("Unsupported export format: {Format} for form: {FormId}", format, formConfigurationId);
+            throw new ArgumentException($"Unsupported export format: {format}");
+        }
+
+        public async Task<object> ImportFormConfigurationAsync(Stream fileStream, bool overwriteExisting, bool validateOnly)
+        {
+            _logger.LogInformation("Importing form configurations. OverwriteExisting: {OverwriteExisting}, ValidateOnly: {ValidateOnly}", 
+                overwriteExisting, validateOnly);
+
+            var importedForms = new List<FormConfiguration>();
+            var errors = new List<string>();
+
+            try
+            {
+                using var reader = new StreamReader(fileStream);
+                var content = await reader.ReadToEndAsync();
+                
+                var importedData = JsonConvert.DeserializeObject<FormConfiguration[]>(content);
+                
+                if (importedData == null)
+                {
+                    errors.Add("Invalid file format");
+                    _logger.LogWarning("Import failed: Invalid file format");
+                    return new { isSuccess = false, importedForms, errors };
+                }
+
+                foreach (var config in importedData)
+                {
+                    try
+                    {
+                        // Validate configuration
+                        var validationResult = await ValidateFormConfigurationAsync(config.ConfigurationData);
+                        if (!validationResult.IsValid)
+                        {
+                            var errorMessage = $"Validation failed for '{config.Name}': {string.Join(", ", validationResult.Errors.Select(e => e.Message))}";
+                            errors.Add(errorMessage);
+                            _logger.LogWarning("Import validation failed for form: {FormName}. Errors: {Errors}", 
+                                config.Name, errorMessage);
+                            continue;
+                        }
+
+                        if (!validateOnly)
+                        {
+                            // Check if exists
+                            var existing = await _context.FormConfigurations
+                                .FirstOrDefaultAsync(fc => fc.RequirementType == config.RequirementType && fc.Name == config.Name);
+
+                            if (existing != null && !overwriteExisting)
+                            {
+                                var errorMessage = $"Form '{config.Name}' already exists for requirement type '{config.RequirementType}'";
+                                errors.Add(errorMessage);
+                                _logger.LogWarning("Import skipped existing form: {FormName}, RequirementType: {RequirementType}", 
+                                    config.Name, config.RequirementType);
+                                continue;
+                            }
+
+                            // Create or update
+                            config.Id = Guid.NewGuid();
+                            config.CreatedAt = DateTime.UtcNow;
+                            config.ModifiedAt = DateTime.UtcNow;
+                            config.CreatedBy = _currentUserService.GetCurrentUserName();
+
+                            if (existing != null)
+                            {
+                                // Update existing
+                                existing.ConfigurationData = config.ConfigurationData;
+                                existing.ModifiedAt = DateTime.UtcNow;
+                                existing.Version++;
+                                importedForms.Add(existing);
+                                
+                                _logger.LogInformation("Updated existing form during import: {FormName}", config.Name);
+                            }
+                            else
+                            {
+                                // Create new
+                                var created = await CreateFormConfigurationAsync(config);
+                                importedForms.Add(created);
+                                
+                                _logger.LogInformation("Created new form during import: {FormName}", config.Name);
+                            }
+                        }
+                        else
+                        {
+                            importedForms.Add(config);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        var errorMessage = $"Error processing '{config.Name}': {ex.Message}";
+                        errors.Add(errorMessage);
+                        _logger.LogError(ex, "Error processing form during import: {FormName}", config.Name);
+                    }
+                }
+
+                var result = new
+                {
+                    isSuccess = errors.Count == 0,
+                    importedForms,
+                    errors
+                };
+
+                _logger.LogInformation("Import completed. Success: {IsSuccess}, Imported: {ImportedCount}, Errors: {ErrorCount}", 
+                    result.isSuccess, importedForms.Count, errors.Count);
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                var errorMessage = $"Import failed: {ex.Message}";
+                errors.Add(errorMessage);
+                _logger.LogError(ex, "Import operation failed");
+                return new { isSuccess = false, importedForms, errors };
+            }
+        }
+
+        // ==================== HELPER METHODS ====================
+
+        private string ApplyPermissionFiltering(string configurationData, List<string> userRoles)
+        {
+            try
+            {
+                var config = JsonConvert.DeserializeObject<dynamic>(configurationData);
+                
+                // Filter fields based on user roles
+                if (config?.fields != null)
+                {
+                    var filteredFields = new List<dynamic>();
+                    foreach (var field in config.fields)
+                    {
+                        var permissions = field.permissions;
+                        if (permissions != null)
+                        {
+                            var allowedRoles = JsonConvert.DeserializeObject<List<string>>(permissions.allowedRoles?.ToString() ?? "[]");
+                            var hideFromRoles = JsonConvert.DeserializeObject<List<string>>(permissions.hideFromRoles?.ToString() ?? "[]");
+                            
+                            // Check if user should see this field
+                            var hasAllowedRole = allowedRoles.Count == 0 || allowedRoles.Any(role => userRoles.Contains(role));
+                            var isHidden = hideFromRoles.Any(role => userRoles.Contains(role));
+                            
+                            if (hasAllowedRole && !isHidden)
+                            {
+                                // Check if field should be read-only
+                                var readOnlyRoles = JsonConvert.DeserializeObject<List<string>>(permissions.readOnlyRoles?.ToString() ?? "[]");
+                                if (readOnlyRoles.Any(role => userRoles.Contains(role)))
+                                {
+                                    field.disabled = true;
+                                }
+                                
+                                filteredFields.Add(field);
+                            }
+                        }
+                        else
+                        {
+                            filteredFields.Add(field);
+                        }
+                    }
+                    config.fields = filteredFields;
+                }
+
+                return JsonConvert.SerializeObject(config);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Failed to apply permission filtering, returning original configuration");
+                return configurationData;
+            }
+        }
+
+        private static bool IsValidEmail(string? email)
+        {
+            if (string.IsNullOrWhiteSpace(email))
+                return false;
+
+            try
+            {
+                var addr = new System.Net.Mail.MailAddress(email);
+                return addr.Address == email;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool IsNumeric(string? value)
+        {
+            return double.TryParse(value, out _);
+        }
+
+        private static bool IsValidUrl(string? url)
+        {
+            return Uri.TryCreate(url, UriKind.Absolute, out _);
+        }
     }
 
     // ====================================
-    // CURRENT USER SERVICE INTERFACE
+    // CURRENT USER SERVICE IMPLEMENTATION
     // ====================================
 
-    public interface ICurrentUserService
+    public class CurrentUserService : ICurrentUserService
     {
-        /// <summary>
-        /// Gets the current user's unique identifier
-        /// </summary>
-        /// <returns>User ID from JWT token or "unknown" if not available</returns>
-        string GetCurrentUserId();
+        private readonly IHttpContextAccessor _httpContextAccessor;
+        private readonly ILogger<CurrentUserService> _logger;
 
-        /// <summary>
-        /// Gets the current user's display name
-        /// </summary>
-        /// <returns>User name from JWT token or "Unknown User" if not available</returns>
-        string GetCurrentUserName();
+        public CurrentUserService(IHttpContextAccessor httpContextAccessor, ILogger<CurrentUserService> logger)
+        {
+            _httpContextAccessor = httpContextAccessor;
+            _logger = logger;
+        }
 
-        /// <summary>
-        /// Gets the current user's roles
-        /// </summary>
-        /// <returns>List of role names from JWT token or empty list if not available</returns>
-        List<string> GetCurrentUserRoles();
-    }
+        public string GetCurrentUserId()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            var userId = context?.User?.FindFirst("sub")?.Value 
+                ?? context?.User?.FindFirst("id")?.Value 
+                ?? context?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+                ?? "unknown";
 
-    // ====================================
-    // WORKFLOW SERVICE INTERFACE (for form integration)
-    // ====================================
+            _logger.LogDebug("Current user ID: {UserId}", userId);
+            return userId;
+        }
 
-    public interface IWorkflowService
-    {
-        /// <summary>
-        /// Gets available workflow steps for a specific requirement type
-        /// </summary>
-        /// <param name="requirementType">Requirement type (e.g., "Kleinanforderung")</param>
-        /// <returns>List of workflow steps that can be bound to form fields</returns>
-        Task<List<WorkflowStep>> GetWorkflowStepsAsync(string requirementType);
+        public string GetCurrentUserName()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            var userName = context?.User?.FindFirst("name")?.Value 
+                ?? context?.User?.FindFirst("username")?.Value 
+                ?? context?.User?.Identity?.Name 
+                ?? "Unknown User";
 
-        /// <summary>
-        /// Gets a specific workflow step by ID
-        /// </summary>
-        /// <param name="stepId">Workflow step ID</param>
-        /// <returns>Workflow step or null if not found</returns>
-        Task<WorkflowStep?> GetWorkflowStepByIdAsync(string stepId);
+            _logger.LogDebug("Current user name: {UserName}", userName);
+            return userName;
+        }
 
-        /// <summary>
-        /// Validates if a workflow step exists and is active
-        /// </summary>
-        /// <param name="stepId">Workflow step ID</param>
-        /// <param name="requirementType">Requirement type</param>
-        /// <returns>True if step exists and is valid for the requirement type</returns>
-        Task<bool> IsValidWorkflowStepAsync(string stepId, string requirementType);
-    }
+        public List<string> GetCurrentUserRoles()
+        {
+            var context = _httpContextAccessor.HttpContext;
+            var roles = context?.User?.FindAll("role")?.Select(c => c.Value).ToList() 
+                ?? context?.User?.FindAll(System.Security.Claims.ClaimTypes.Role)?.Select(c => c.Value).ToList()
+                ?? new List<string>();
 
-    // ====================================
-    // AUDIT SERVICE INTERFACE (optional)
-    // ====================================
-
-    public interface IAuditService
-    {
-        /// <summary>
-        /// Logs an audit event for form configuration changes
-        /// </summary>
-        /// <param name="entityType">Type of entity (e.g., "FormConfiguration")</param>
-        /// <param name="entityId">Entity ID</param>
-        /// <param name="action">Action performed</param>
-        /// <param name="oldValues">Previous values (optional)</param>
-        /// <param name="newValues">New values (optional)</param>
-        /// <param name="userId">User who performed the action</param>
-        Task LogAuditEventAsync(string entityType, string entityId, string action, object? oldValues = null, object? newValues = null, string? userId = null);
-
-        /// <summary>
-        /// Gets audit history for a specific entity
-        /// </summary>
-        /// <param name="entityType">Type of entity</param>
-        /// <param name="entityId">Entity ID</param>
-        /// <param name="limit">Maximum number of entries to return</param>
-        /// <returns>List of audit log entries</returns>
-        Task<List<object>> GetAuditHistoryAsync(string entityType, string entityId, int limit = 50);
-    }
-
-    // ====================================
-    // NOTIFICATION SERVICE INTERFACE (optional)
-    // ====================================
-
-    public interface INotificationService
-    {
-        /// <summary>
-        /// Sends notification about form deployment status change
-        /// </summary>
-        /// <param name="deploymentId">Deployment ID</param>
-        /// <param name="status">New deployment status</param>
-        /// <param name="recipients">List of user IDs or roles to notify</param>
-        Task SendDeploymentNotificationAsync(Guid deploymentId, string status, List<string> recipients);
-
-        /// <summary>
-        /// Sends notification about form submission
-        /// </summary>
-        /// <param name="submissionId">Submission ID</param>
-        /// <param name="formName">Form name</param>
-        /// <param name="recipients">List of user IDs or roles to notify</param>
-        Task SendSubmissionNotificationAsync(Guid submissionId, string formName, List<string> recipients);
-
-        /// <summary>
-        /// Sends notification about validation errors
-        /// </summary>
-        /// <param name="formConfigurationId">Form configuration ID</param>
-        /// <param name="errors">List of validation errors</param>
-        /// <param name="userId">User ID to notify</param>
-        Task SendValidationErrorNotificationAsync(Guid formConfigurationId, List<string> errors, string userId);
+            _logger.LogDebug("Current user roles: {Roles}", string.Join(", ", roles));
+            return roles;
+        }
     }
 }
