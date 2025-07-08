@@ -889,57 +889,75 @@ namespace YourProject.Services.Implementation
 
         // ==================== HELPER METHODS ====================
 
-        private string ApplyPermissionFiltering(string configurationData, List<string> userRoles)
-        {
-            try
-            {
-                var config = JsonConvert.DeserializeObject<dynamic>(configurationData);
-                
-                // Filter fields based on user roles
-                if (config?.fields != null)
-                {
-                    var filteredFields = new List<dynamic>();
-                    foreach (var field in config.fields)
-                    {
-                        var permissions = field.permissions;
-                        if (permissions != null)
-                        {
-                            var allowedRoles = JsonConvert.DeserializeObject<List<string>>(permissions.allowedRoles?.ToString() ?? "[]");
-                            var hideFromRoles = JsonConvert.DeserializeObject<List<string>>(permissions.hideFromRoles?.ToString() ?? "[]");
-                            
-                            // Check if user should see this field
-                            var hasAllowedRole = allowedRoles.Count == 0 || allowedRoles.Any(role => userRoles.Contains(role));
-                            var isHidden = hideFromRoles.Any(role => userRoles.Contains(role));
-                            
-                            if (hasAllowedRole && !isHidden)
-                            {
-                                // Check if field should be read-only
-                                var readOnlyRoles = JsonConvert.DeserializeObject<List<string>>(permissions.readOnlyRoles?.ToString() ?? "[]");
-                                if (readOnlyRoles.Any(role => userRoles.Contains(role)))
-                                {
-                                    field.disabled = true;
-                                }
-                                
-                                filteredFields.Add(field);
-                            }
-                        }
-                        else
-                        {
-                            filteredFields.Add(field);
-                        }
-                    }
-                    config.fields = filteredFields;
-                }
+        private async Task<List<FormConfiguration>> ApplyPermissionFiltering(
+    List<FormConfiguration> configurations, 
+    List<string> userRoles, 
+    string currentUser)
+{
+    var filteredConfigurations = new List<FormConfiguration>();
 
-                return JsonConvert.SerializeObject(config);
-            }
-            catch (Exception ex)
+    foreach (var config in configurations)
+    {
+        try
+        {
+            // Parse ConfigurationData für Permission-Checks
+            if (!string.IsNullOrEmpty(config.ConfigurationData))
             {
-                _logger.LogWarning(ex, "Failed to apply permission filtering, returning original configuration");
-                return configurationData;
+                // Nutze dein FormPermissions DTO
+                var permissions = JsonSerializer.Deserialize<FormPermissions>(config.ConfigurationData);
+                
+                if (permissions != null)
+                {
+                    // Prüfe Permissions mit deinem DTO
+                    if (HasFormPermission(permissions, userRoles, currentUser))
+                    {
+                        filteredConfigurations.Add(config);
+                    }
+                }
+                else
+                {
+                    // Keine Permissions = erlaubt
+                    filteredConfigurations.Add(config);
+                }
+            }
+            else
+            {
+                // Keine ConfigurationData = erlaubt
+                filteredConfigurations.Add(config);
             }
         }
+        catch (JsonException ex)
+        {
+            _logger.LogWarning("Invalid JSON in ConfigurationData for FormConfiguration {Id}: {Error}", 
+                config.Id, ex.Message);
+            
+            // Bei JSON-Fehlern: Form einschließen (Fail-Safe)
+            filteredConfigurations.Add(config);
+        }
+    }
 
+    return filteredConfigurations;
+}
+
+private bool HasFormPermission(FormPermissions permissions, List<string> userRoles, string currentUser)
+{
+    // Denied Roles prüfen (höchste Priorität)
+    if (permissions.DenyRoles?.Any() == true && 
+        userRoles.Any(role => permissions.DenyRoles.Contains(role)))
+        return false;
+
+    // Allowed Roles prüfen
+    if (permissions.AllowedRoles?.Any() == true && 
+        !userRoles.Any(role => permissions.AllowedRoles.Contains(role)))
+        return false;
+
+    // Allowed Users prüfen
+    if (permissions.AllowedUsers?.Any() == true && 
+        !permissions.AllowedUsers.Contains(currentUser))
+        return false;
+
+    return true;
+}
         private static bool IsValidEmail(string? email)
         {
             if (string.IsNullOrWhiteSpace(email))
