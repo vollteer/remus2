@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using TicketApi.Shared.Models.Entities;
+using static TicketApi.Shared.Infrastructure.Utils.Helpers.VersionHelper;
 
 
 namespace TicketApi.Features.FormBuilder.Services
@@ -59,6 +60,10 @@ namespace TicketApi.Features.FormBuilder.Services
         /// <param name="includeInactive">Whether to include inactive configurations</param>
         /// <returns>List of form configurations ordered by requirement type and name</returns>
         Task<List<FormConfiguration>> GetAllFormConfigurationsAsync(string? requirementType = null, bool includeInactive = false);
+        Task<FormConfiguration?> GetActiveVersionAsync(string requirementType);
+        Task ActivateVersionAsync(Guid configId);
+        Task<List<FormConfiguration>> GetFormVersionsAsync(Guid configId);
+        Task<FormConfiguration> CreateNewVersionAsync(Guid configId, VersionType versionType = VersionType.Patch);
 
         // ==================== DEPLOYMENTS (4-Eyes Principle) ====================
 
@@ -318,5 +323,6 @@ namespace TicketApi.Features.FormBuilder.Services
         /// <param name="errors">List of validation errors</param>
         /// <param name="userId">User ID to notify</param>
         Task SendValidationErrorNotificationAsync(Guid formConfigurationId, List<string> errors, string userId);
+        Task<FormConfiguration> CreateNewVersionAsync(Guid configId, VersionType versionType = VersionType.Patch);
     }
 }
