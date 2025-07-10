@@ -1,0 +1,45 @@
+using System;
+using System.Collections.Generic;
+
+namespace TicketApi.Shared.Models.Entities;
+
+public partial class ConfigurationImport
+{
+    public Guid Id { get; set; }
+
+    public string ImportType { get; set; } = null!;
+
+    public string FileName { get; set; } = null!;
+
+    public Guid? SourceExportId { get; set; }
+
+    public string ImportData { get; set; } = null!;
+
+    public int? ImportSize { get; set; }
+
+    public string? Checksum { get; set; }
+
+    public string ImportedBy { get; set; } = null!;
+
+    public string? ImportReason { get; set; }
+
+    public string? ImportStatus { get; set; }
+
+    public string? ImportErrors { get; set; }
+
+    public Guid? CreatedWorkflowConfigId { get; set; }
+
+    public Guid? CreatedFormConfigId { get; set; }
+
+    public int? AffectedRequirementsCount { get; set; }
+
+    public string? ValidationResults { get; set; }
+
+    public bool? RequiresReview { get; set; }
+
+    public DateTime? CreatedAt { get; set; }
+
+    public DateTime? ProcessedAt { get; set; }
+
+    public virtual ConfigurationExport? SourceExport { get; set; }
+}
