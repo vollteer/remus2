@@ -1,0 +1,42 @@
+using System;
+using System.Collections.Generic;
+
+namespace TicketApi.Shared.Models.Entities;
+
+public partial class FormConfiguration
+{
+    public Guid Id { get; set; }
+
+    public string RequirementType { get; set; } = null!;
+
+    public string? WorkflowStepId { get; set; }
+
+    public string Name { get; set; } = null!;
+
+    public string? Description { get; set; }
+
+    public string ConfigurationData { get; set; } = null!;
+
+    public int? Version { get; set; }
+
+    public bool? IsActive { get; set; }
+
+    public bool? HasLightMode { get; set; }
+
+    public DateTime? CreatedAt { get; set; }
+
+    public DateTime? ModifiedAt { get; set; }
+
+    public string? CreatedBy { get; set; }
+
+    public virtual ICollection<ConfigurationExport> ConfigurationExports { get; set; } = new List<ConfigurationExport>();
+
+    public virtual ICollection<FormDeployment> FormDeployments { get; set; } = new List<FormDeployment>();
+
+    public virtual ICollection<FormSubmission> FormSubmissions { get; set; } = new List<FormSubmission>();
+
+    public virtual ICollection<Requirement> Requirements { get; set; } = new List<Requirement>();
+
+    public virtual ICollection<FormDeployment> Deployments {  get; set; } = new List<FormDeployment> { };
+    public virtual ICollection<FormSubmission> Submissions { get; set; } = new List<FormSubmission> { };
+}
