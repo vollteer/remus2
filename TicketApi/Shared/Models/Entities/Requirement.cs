@@ -1,0 +1,79 @@
+using System;
+using System.Collections.Generic;
+
+namespace TicketApi.Shared.Models.Entities;
+
+public partial class Requirement
+{
+    public Guid Id { get; set; }
+
+    public string RequirementNumber { get; set; } = null!;
+
+    public string Title { get; set; } = null!;
+
+    public string? Description { get; set; }
+
+    public string RequirementType { get; set; } = null!;
+
+    public string? Priority { get; set; }
+
+    public string? Status { get; set; }
+
+    public string RequestedBy { get; set; } = null!;
+
+    public string? BusinessOwner { get; set; }
+
+    public string? TechnicalOwner { get; set; }
+
+    public string? Department { get; set; }
+
+    public string? CostCenter { get; set; }
+
+    public decimal? EstimatedCost { get; set; }
+
+    public decimal? ApprovedBudget { get; set; }
+
+    public decimal? ActualCost { get; set; }
+
+    public string? Currency { get; set; }
+
+    public DateTime? RequestedDate { get; set; }
+
+    public DateTime? RequiredByDate { get; set; }
+
+    public DateTime? StartDate { get; set; }
+
+    public DateTime? CompletedDate { get; set; }
+
+    public Guid? CurrentWorkflowConfigId { get; set; }
+
+    public string? CurrentWorkflowStep { get; set; }
+
+    public Guid? WorkflowInstanceId { get; set; }
+
+    public string? FormData { get; set; }
+
+    public Guid? FormConfigurationId { get; set; }
+
+    public bool? HasPersonalData { get; set; }
+
+    public string? SecurityClassification { get; set; }
+
+    public string? ComplianceFlags { get; set; }
+
+    public DateTime? CreatedAt { get; set; }
+
+    public DateTime? ModifiedAt { get; set; }
+
+    public string? CreatedBy { get; set; }
+
+    public string? ModifiedBy { get; set; }
+
+    public virtual WorkflowConfiguration? CurrentWorkflowConfig { get; set; }
+
+    public virtual FormConfiguration? FormConfiguration { get; set; }
+
+    public virtual ICollection<RequirementAttachment> RequirementAttachments { get; set; } = new List<RequirementAttachment>();
+
+    public virtual ICollection<RequirementComment> RequirementComments { get; set; } = new List<RequirementComment>();
+}
