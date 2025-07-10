@@ -1,6 +1,8 @@
 
 using System.ComponentModel.DataAnnotations;
+using Microsoft.OData.Edm.Validation;
 using Newtonsoft.Json;
+using TicketApi.Shared.Infrastructure.Utils.Helpers;
 
 namespace TicketApi.Features.FormBuilder.DTO
 {
@@ -151,7 +153,7 @@ namespace TicketApi.Features.FormBuilder.DTO
         public string? WorkflowStepId { get; set; }
         public List<FormSectionDto> Sections { get; set; } = new();
         public List<FormFieldDto> Fields { get; set; } = new();
-        public int Version { get; set; }
+        public string Version { get; set; } = "v1.0";
         public bool IsActive { get; set; }
         public bool HasLightMode { get; set; }
         public string CreatedAt { get; set; } = string.Empty;
@@ -264,7 +266,7 @@ namespace TicketApi.Features.FormBuilder.DTO
         public Guid Id { get; set; }
 
         [Required]
-        public int Version { get; set; }
+        public string Version { get; set; } = VersionHelper.CreateInitialVersion();
 
         [StringLength(255)]
         public string? Name { get; set; }
@@ -290,7 +292,7 @@ namespace TicketApi.Features.FormBuilder.DTO
     {
         public string Id { get; set; } = string.Empty;
         public string FormConfigurationId { get; set; } = string.Empty;
-        public int Version { get; set; }
+        public string Version { get; set; }
         public string Status { get; set; } = string.Empty;
         public string TargetEnvironment { get; set; } = string.Empty;
         public string CreatedAt { get; set; } = string.Empty;
@@ -299,12 +301,21 @@ namespace TicketApi.Features.FormBuilder.DTO
         public string? ReviewedBy { get; set; }
         public string? ReviewComment { get; set; }
         public string? DeployedAt { get; set; }
+        public string? ErrorMessage { get; set; }
+        public bool HasErrors      { get; set; }
+        public int ErrorCount { get; set; }
+        public string? DeploymentNotes { get; set; }
+        public int AffectedRequirements { get; set; }
+        public bool CanRollback { get; set; }
+        public string? RollbackReason { get; set; }
+        public DateTime ModifiedAt { get; set; }
+
     }
 
     public class DeployFormConfigurationRequest
     {
         [Required]
-        public int Version { get; set; }
+        public string Version { get; set; }
 
         [StringLength(1000)]
         public string? ReviewComment { get; set; }
@@ -338,6 +349,12 @@ namespace TicketApi.Features.FormBuilder.DTO
         public string? SubmittedAt { get; set; }
         public string SubmittedBy { get; set; } = string.Empty;
         public string CreatedAt { get; set; } = string.Empty;
+        public DateTime? ReviewedAt     { get; set; }
+        public string? ReviewedBy { get; set; }
+        public string? ReviewComments { get; set; }
+        public DateTime ModifiedAt { get; set; }
+        public string? CreatedBy { get; set; }
+        public string? ModifiedBy { get; set; }
     }
 
     public class SubmitFormRequest
@@ -362,14 +379,16 @@ namespace TicketApi.Features.FormBuilder.DTO
         public List<ValidationErrorDto> Errors { get; set; } = new();
         public List<ValidationErrorDto> Warnings { get; set; } = new();
         public List<ValidationErrorDto> Suggestions { get; set; } = new();
+        public Severity Severity { get; set; } = Severity.Error;
     }
 
+ 
     public class ValidationErrorDto
     {
         public string Field { get; set; } = string.Empty;
         public string Message { get; set; } = string.Empty;
         public string Code { get; set; } = string.Empty;
-        public string Severity { get; set; } = string.Empty;
+        public Severity Severity { get; set; } = Severity.Error;
     }
 
     // ====================================
