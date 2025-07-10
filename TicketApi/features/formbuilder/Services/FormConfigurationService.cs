@@ -6,6 +6,15 @@ using TicketApi.Shared.Models.Entities;
 using TicketApi.Features.FormBuilder.DTO;
 using Newtonsoft.Json.Linq;
 using System.Linq;
+using static TicketApi.Shared.Infrastructure.Utils.Helpers.VersionHelper;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
+using TicketApi.Shared.Infrastructure.Utils.Helpers;
+using k8s.KubeConfigModels;
+using System;
+using Humanizer;
+using YamlDotNet.Core;
+using System.Text.Json;
+using JsonException = Newtonsoft.Json.JsonException;
 
 namespace TicketApi.Features.FormBuilder.Services
 {
@@ -46,7 +55,7 @@ namespace TicketApi.Features.FormBuilder.Services
 
             if (config != null)
             {
-                
+
                 // Apply role-based filtering to configuration data
                 config.ConfigurationData = ApplyPermissionFilteringToJson(config.ConfigurationData, userRoles, currentUserId);
 
@@ -63,7 +72,7 @@ namespace TicketApi.Features.FormBuilder.Services
 
         private string ApplyPermissionFilteringToJson(string configurationJson, List<string> userRoles, string currentUserId)
         {
-            if(string.IsNullOrEmpty(configurationJson))
+            if (string.IsNullOrEmpty(configurationJson))
             {
                 return configurationJson;
             }
@@ -106,7 +115,7 @@ namespace TicketApi.Features.FormBuilder.Services
             if (permissions == null) return true;
 
             var allowedRoles = permissions["allowedRoles"]?.ToObject<List<string>>();
-            if(allowedRoles?.Any() == true && !userRoles.Any(role => allowedRoles.Contains(role)))
+            if (allowedRoles?.Any() == true && !userRoles.Any(role => allowedRoles.Contains(role)))
             {
                 return false;
             }
@@ -342,7 +351,7 @@ namespace TicketApi.Features.FormBuilder.Services
             catch (Exception ex)
             {
                 deployment.ReviewStatus = "failed";
-                deployment.error = ex.Message;
+                deployment.ErrorMessage = ex.Message;
                 await UpdateDeploymentAsync(deployment);
 
                 _logger.LogError(ex, "Failed to execute deployment: {DeploymentId}", deploymentId);
@@ -756,7 +765,7 @@ namespace TicketApi.Features.FormBuilder.Services
                 Name = name,
                 RequirementType = requirementType,
                 ConfigurationData = "{}",
-                Version = 1,
+                Version = CreateInitialVersion(),
                 IsActive = true,
                 HasLightMode = true,
                 CreatedAt = DateTime.UtcNow,
@@ -895,7 +904,7 @@ namespace TicketApi.Features.FormBuilder.Services
                                 // Update existing
                                 existing.ConfigurationData = config.ConfigurationData;
                                 existing.ModifiedAt = DateTime.UtcNow;
-                                existing.Version++;
+                                IncrementVersion(existing.Version);
                                 importedForms.Add(existing);
 
                                 _logger.LogInformation("Updated existing form during import: {FormName}", config.Name);
@@ -945,55 +954,250 @@ namespace TicketApi.Features.FormBuilder.Services
 
         // ==================== HELPER METHODS ====================
 
-//        private async Task<List<FormConfiguration>> ApplyPermissionFiltering(
-//List<FormConfiguration> configurations,
-//List<string> userRoles,
-//string currentUser)
+        //        private async Task<List<FormConfiguration>> ApplyPermissionFiltering(
+        //List<FormConfiguration> configurations,
+        //List<string> userRoles,
+        //string currentUser)
+        //        {
+        //            var filteredConfigurations = new List<FormConfiguration>();
+
+        //            foreach (var config in configurations)
+        //            {
+        //                try
+        //                {
+        //                    // Parse ConfigurationData für Permission-Checks
+        //                    if (!string.IsNullOrEmpty(config.ConfigurationData))
+        //                    {
+        //                        // Nutze dein FormPermissions DTO
+        //                        var permissions = JsonSerializer.Deserialize<FormPermissionsDto>(config.ConfigurationData);
+
+        //                        if (permissions != null)
+        //                        {
+        //                            // Prüfe Permissions mit deinem DTO
+        //                            if (HasFormPermission(permissions, userRoles, currentUser))
+        //                            {
+        //                                filteredConfigurations.Add(config);
+        //                            }
+        //                        }
+        //                        else
+        //                        {
+        //                            // Keine Permissions = erlaubt
+        //                            filteredConfigurations.Add(config);
+        //                        }
+        //                    }
+        //                    else
+        //                    {
+        //                        // Keine ConfigurationData = erlaubt
+        //                        filteredConfigurations.Add(config);
+        //                    }
+        //                }
+        //                catch (JsonException ex)
+        //                {
+        //                    _logger.LogWarning("Invalid JSON in ConfigurationData for FormConfiguration {Id}: {Error}",
+        //                        config.Id, ex.Message);
+
+        //                    // Bei JSON-Fehlern: Form einschließen (Fail-Safe)
+        //                    filteredConfigurations.Add(config);
+        //                }
+        //            }
+
+        //            return filteredConfigurations;
+        //        }
+        public async Task<FormConfiguration> CreateNewVersionAsync(Guid configId, VersionType versionType = VersionType.Patch)
+        {
+            var existingConfig = await _context.FormConfigurations.FirstOrDefaultAsync(f => f.Id == configId);
+
+            if (existingConfig == null)
+            {
+                throw new ArgumentException("Form configuration not found");
+            }
+
+            var newConfig = new FormConfiguration
+            {
+                Id = Guid.NewGuid(),
+                RequirementType = existingConfig.RequirementType,
+                Name = existingConfig.Name,
+                Description = existingConfig.Description,
+                ConfigurationData = existingConfig.ConfigurationData,
+                Version = VersionHelper.IncrementVersion(existingConfig.Version, versionType),
+                IsActive = false,
+                HasLightMode = existingConfig.HasLightMode,
+                CreatedBy = "", // TODO
+                CreatedAt = DateTime.UtcNow,
+                ModifiedAt = DateTime.UtcNow,
+
+            };
+            await _context.FormConfigurations.AddAsync(newConfig);
+            await _context.SaveChangesAsync();
+
+            return newConfig;
+        }
+
+        public async Task<List<FormConfiguration>> GetFormVersionsAsync(Guid configId)
+        {
+            _logger.LogInformation("Getting all versions for form configuration { ConfigId}", configId);
+
+
+            // Erst die Basis-Konfiguration finden
+            var baseConfig = await _context.FormConfigurations
+                .FirstOrDefaultAsync(f => f.Id == configId);
+
+            if (baseConfig == null)
+            {
+                _logger.LogWarning("Form configuration {ConfigId} not found", configId);
+                throw new ArgumentException("Form configuration not found", nameof(configId));
+            }
+
+            // Alle Versionen mit gleichem RequirementType finden
+            var allVersions = await _context.FormConfigurations
+                .Where(f => f.RequirementType == baseConfig.RequirementType)
+                .OrderByDescending(f => f.CreatedAt) // Neueste zuerst
+                .ToListAsync();
+
+            _logger.LogInformation("Found {Count} versions for requirement type {RequirementType}",
+                allVersions.Count, baseConfig.RequirementType);
+
+            return allVersions;
+
+
+        }
+
+        public async Task ActivateVersionAsync(Guid configId)
+        {
+
+            _logger.LogInformation("Activating form configuration version { ConfigId }", configId);
+
+
+            var configToActivate = await _context.FormConfigurations
+                .FirstOrDefaultAsync(f => f.Id == configId);
+
+            if (configToActivate == null)
+            {
+                _logger.LogWarning("Form configuration {ConfigId} not found", configId);
+                throw new ArgumentException("Form configuration not found", nameof(configId));
+            }
+
+            try
+            {
+                // Alle anderen Versionen dieses RequirementTypes deaktivieren
+                var otherVersions = await _context.FormConfigurations
+                    .Where(f => f.RequirementType == configToActivate.RequirementType && f.Id != configId)
+                    .ToListAsync();
+
+                foreach (var version in otherVersions)
+                {
+                    version.IsActive = false;
+                    version.ModifiedAt = DateTime.UtcNow;
+                }
+
+                // Die gewählte Version aktivieren
+                configToActivate.IsActive = true;
+                configToActivate.ModifiedAt = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Successfully activated version {Version} for requirement type {RequirementType}",
+                    configToActivate.Version, configToActivate.RequirementType);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error activating form configuration version {ConfigId}", configId);
+                throw;
+            }
+
+        }
+        public async Task<FormConfiguration?> GetActiveVersionAsync(string requirementType)
+        {
+            _logger.LogInformation("Getting active version for requirement type { RequirementType}", requirementType);
+
+
+            var activeConfig = await _context.FormConfigurations
+                .Where(f => f.RequirementType == requirementType && f.IsActive == true)
+                .OrderByDescending(f => f.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            if (activeConfig != null)
+            {
+                _logger.LogInformation("Found active version {Version} for requirement type {RequirementType}",
+                    activeConfig.Version, requirementType);
+            }
+            else
+            {
+                _logger.LogInformation("No active version found for requirement type {RequirementType}", requirementType);
+            }
+
+            return activeConfig;
+
+
+        }
+
+//        public async Task<FormVersionComparison> CompareVersionsAsync(Guid fromVersionId, Guid toVersionId)
 //        {
-//            var filteredConfigurations = new List<FormConfiguration>();
+//            _logger.LogInformation("Comparing form versions { FromId} to { ToId}", fromVersionId, toVersionId);
 
-//            foreach (var config in configurations)
+
+//            var fromVersion = await _context.FormConfigurations.FindAsync(fromVersionId);
+//            var toVersion = await _context.FormConfigurations.FindAsync(toVersionId);
+
+//            if (fromVersion == null || toVersion == null)
 //            {
-//                try
-//                {
-//                    // Parse ConfigurationData für Permission-Checks
-//                    if (!string.IsNullOrEmpty(config.ConfigurationData))
-//                    {
-//                        // Nutze dein FormPermissions DTO
-//                        var permissions = JsonSerializer.Deserialize<FormPermissionsDto>(config.ConfigurationData);
-
-//                        if (permissions != null)
-//                        {
-//                            // Prüfe Permissions mit deinem DTO
-//                            if (HasFormPermission(permissions, userRoles, currentUser))
-//                            {
-//                                filteredConfigurations.Add(config);
-//                            }
-//                        }
-//                        else
-//                        {
-//                            // Keine Permissions = erlaubt
-//                            filteredConfigurations.Add(config);
-//                        }
-//                    }
-//                    else
-//                    {
-//                        // Keine ConfigurationData = erlaubt
-//                        filteredConfigurations.Add(config);
-//                    }
-//                }
-//                catch (JsonException ex)
-//                {
-//                    _logger.LogWarning("Invalid JSON in ConfigurationData for FormConfiguration {Id}: {Error}",
-//                        config.Id, ex.Message);
-
-//                    // Bei JSON-Fehlern: Form einschließen (Fail-Safe)
-//                    filteredConfigurations.Add(config);
-//                }
+//                throw new ArgumentException("One or both versions not found");
 //            }
 
-//            return filteredConfigurations;
+//            // Hier würdest du die JSON-ConfigurationData vergleichen
+//            var comparison = new FormVersionComparison
+//            {
+//                FromVersion = fromVersion.Version,
+//                ToVersion = toVersion.Version,
+//                Changes = CompareConfigurationData(fromVersion.ConfigurationData, toVersion.ConfigurationData)
+//            };
+
+//            return comparison;
+
+
 //        }
+
+//        private List<FormChange> CompareConfigurationData(string fromJson, string toJson)
+//        {
+//            var changes = new List<FormChange>();
+//try
+//            {
+//                // Hier würdest du die JSON-Objekte vergleichen
+//                // Das ist eine komplexere Logik - vereinfacht dargestellt
+
+//                using var fromDoc = JsonDocument.Parse(fromJson);
+//                using var toDoc = JsonDocument.Parse(toJson);
+
+//                // Beispiel: Fields vergleichen
+//                if (fromDoc.RootElement.TryGetProperty("fields", out var fromFields) &&
+//                    toDoc.RootElement.TryGetProperty("fields", out var toFields))
+//                {
+//                    // Vereinfachter Vergleich - du würdest das detaillierter machen
+//                    if (fromFields.GetArrayLength() != toFields.GetArrayLength())
+//                    {
+//                        changes.Add(new FormChange
+//                        {
+//                            Type = "FieldCount",
+//                            Description = $"Anzahl Felder geändert: {fromFields.GetArrayLength()} → {toFields.GetArrayLength()}"
+//                        });
+//                    }
+//                }
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogWarning(ex, "Error comparing configuration data");
+//                changes.Add(new FormChange
+//                {
+//                    Type = "Error",
+//                    Description = "Fehler beim Vergleichen der Konfigurationen"
+//                });
+//            }
+
+//            return changes;
+//```
+
+//}
+
 
         private bool HasFormPermission(FormPermissionsDto permissions, List<string> userRoles, string currentUser)
         {
@@ -1039,57 +1243,6 @@ namespace TicketApi.Features.FormBuilder.Services
         private static bool IsValidUrl(string? url)
         {
             return Uri.TryCreate(url, UriKind.Absolute, out _);
-        }
-    }
-
-    // ====================================
-    // CURRENT USER SERVICE IMPLEMENTATION
-    // ====================================
-
-    public class CurrentUserService : ICurrentUserService
-    {
-        private readonly IHttpContextAccessor _httpContextAccessor;
-        private readonly ILogger<CurrentUserService> _logger;
-
-        public CurrentUserService(IHttpContextAccessor httpContextAccessor, ILogger<CurrentUserService> logger)
-        {
-            _httpContextAccessor = httpContextAccessor;
-            _logger = logger;
-        }
-
-        public string GetCurrentUserId()
-        {
-            var context = _httpContextAccessor.HttpContext;
-            var userId = context?.User?.FindFirst("sub")?.Value
-                ?? context?.User?.FindFirst("id")?.Value
-                ?? context?.User?.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
-                ?? "unknown";
-
-            _logger.LogDebug("Current user ID: {UserId}", userId);
-            return userId;
-        }
-
-        public string GetCurrentUserName()
-        {
-            var context = _httpContextAccessor.HttpContext;
-            var userName = context?.User?.FindFirst("name")?.Value
-                ?? context?.User?.FindFirst("username")?.Value
-                ?? context?.User?.Identity?.Name
-                ?? "Unknown User";
-
-            _logger.LogDebug("Current user name: {UserName}", userName);
-            return userName;
-        }
-
-        public List<string> GetCurrentUserRoles()
-        {
-            var context = _httpContextAccessor.HttpContext;
-            var roles = context?.User?.FindAll("role")?.Select(c => c.Value).ToList()
-                ?? context?.User?.FindAll(System.Security.Claims.ClaimTypes.Role)?.Select(c => c.Value).ToList()
-                ?? new List<string>();
-
-            _logger.LogDebug("Current user roles: {Roles}", string.Join(", ", roles));
-            return roles;
         }
     }
 }
