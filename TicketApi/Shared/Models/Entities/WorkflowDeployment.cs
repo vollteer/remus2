@@ -1,0 +1,57 @@
+using System;
+using System.Collections.Generic;
+
+namespace TicketApi.Shared.Models.Entities;
+
+public partial class WorkflowDeployment
+{
+    public Guid Id { get; set; }
+
+    public Guid WorkflowConfigurationId { get; set; }
+
+    public string Version { get; set; } = null!;
+
+    public string DeploymentType { get; set; } = null!;
+
+    public string? Environment { get; set; }
+
+    public string CreatedBy { get; set; } = null!;
+
+    public string? ReviewedBy { get; set; }
+
+    public string? ApprovedBy { get; set; }
+
+    public string? DeployedBy { get; set; }
+
+    public string? ReviewStatus { get; set; }
+
+    public string? ReviewComments { get; set; }
+
+    public DateTime? ReviewDate { get; set; }
+
+    public DateTime? ApprovalDate { get; set; }
+
+    public DateTime? DeploymentDate { get; set; }
+
+    public string ConfigurationSnapshot { get; set; } = null!;
+
+    public string? ChangesSummary { get; set; }
+
+    public int? AffectedRequirements { get; set; }
+
+    public string? RollbackPlan { get; set; }
+
+    public string? DeploymentNotes { get; set; }
+
+    public bool? IsActive { get; set; }
+
+    public bool? CanRollback { get; set; }
+
+    public DateTime? CreatedAt { get; set; }
+
+    public DateTime? ModifiedAt { get; set; }
+
+    public virtual WorkflowConfiguration WorkflowConfiguration { get; set; } = null!;
+
+    public virtual ICollection<WorkflowStepInstance> WorkflowStepInstances { get; set; } = new List<WorkflowStepInstance>();
+}
