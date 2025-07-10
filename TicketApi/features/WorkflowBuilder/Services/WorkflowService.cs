@@ -1,7 +1,9 @@
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Primitives;
 using System.Text.Json;
 using TicketApi.Features.WorkflowBuilder.DTO.RequirementsApi.DTOs;
+using TicketApi.Shared.Infrastructure.Utils.Helpers;
 using TicketApi.Shared.Models.Entities;
 
 namespace TicketApi.Features.WorkflowBuilder.Services
@@ -77,7 +79,7 @@ namespace TicketApi.Features.WorkflowBuilder.Services
                     RequirementType = request.Type,
                     Description = request.Description,
                     IsActive = true,
-                    Version = 1,
+                    Version = VersionHelper.CreateInitialVersion(),
                     CreatedAt = DateTime.UtcNow,
                     ModifiedAt = DateTime.UtcNow,
                     CreatedBy = "system", // TODO: Get from current user context
@@ -144,7 +146,7 @@ namespace TicketApi.Features.WorkflowBuilder.Services
 
                 workflow.ModifiedAt = DateTime.UtcNow;
                 workflow.ModifiedBy = "system"; // TODO: Get from current user context
-                workflow.Version++;
+                VersionHelper.IncrementVersion(workflow.Version);
 
                 await _context.SaveChangesAsync();
 
@@ -330,13 +332,21 @@ namespace TicketApi.Features.WorkflowBuilder.Services
                 return validationResult.Statistics;
             }
 
-            public async Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType)
+            public async Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType, string version)
             {
                 var workflows = await _context.WorkflowConfigurations
-                    .Where(w => w.IsActive == true && w.RequirementType == requirementType)
+                    .Where(w => w.IsActive == true && w.RequirementType == requirementType && w.Version == version)
                     .ToListAsync();
 
                 return workflows.Select(MapToDto).ToList();
+            }
+
+            public async Task<WorkflowConfigurationDto> GetWorkflowsByRequirementTypeAndIdAsync(string requirementType, string version)
+            {
+                var workflow = await _context.WorkflowConfigurations
+                    .Where(w => w.IsActive == true && w.RequirementType == requirementType && w.Version == version)                    
+                    .FirstOrDefaultAsync();
+                return MapToDto(workflow);
             }
 
             public async Task<WorkflowConfigurationDto?> CloneWorkflowAsync(Guid sourceId, string newName, string newType)
@@ -413,7 +423,7 @@ namespace TicketApi.Features.WorkflowBuilder.Services
                     Type = type,
                     Description = $"Standard Workflow für {type}",
                     IsActive = true,
-                    Version = 1,
+                    Version = "v1.0.0",
                     CreatedAt = DateTime.UtcNow,
                     ModifiedAt = DateTime.UtcNow,
                     CreatedBy = "system",
