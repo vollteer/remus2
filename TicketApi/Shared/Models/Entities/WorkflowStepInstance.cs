@@ -1,0 +1,47 @@
+using System;
+using System.Collections.Generic;
+
+namespace TicketApi.Shared.Models.Entities;
+
+public partial class WorkflowStepInstance
+{
+    public Guid Id { get; set; }
+
+    public Guid RequirementId { get; set; }
+
+    public Guid WorkflowConfigurationId { get; set; }
+
+    public string StepId { get; set; } = null!;
+
+    public string? Status { get; set; }
+
+    public string? AssignedTo { get; set; }
+
+    public DateTime? StartedAt { get; set; }
+
+    public DateTime? CompletedAt { get; set; }
+
+    public DateTime? DueDate { get; set; }
+
+    public string? Comments { get; set; }
+
+    public string? StepData { get; set; }
+
+    public Guid? DeploymentId { get; set; }
+
+    public string? StepConfiguration { get; set; }
+
+    public string? PermissionOverrides { get; set; }
+
+    public bool? StartedBySystem { get; set; }
+
+    public bool? AutoAssigned { get; set; }
+
+    public int? EscalationLevel { get; set; }
+
+    public DateTime? EscalationDate { get; set; }
+
+    public virtual WorkflowDeployment? Deployment { get; set; }
+
+    public virtual WorkflowConfiguration WorkflowConfiguration { get; set; } = null!;
+}
