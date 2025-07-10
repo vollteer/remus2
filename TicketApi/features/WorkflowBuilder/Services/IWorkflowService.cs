@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Primitives;
 using TicketApi.Features.WorkflowBuilder.DTO.RequirementsApi.DTOs;
 
 namespace TicketApi.Features.WorkflowBuilder.Services
@@ -16,7 +17,9 @@ namespace TicketApi.Features.WorkflowBuilder.Services
         Task<WorkflowConfigurationDto> ImportWorkflowAsync(Stream fileStream);
         Task<WorkflowConfigurationDto?> ResetWorkflowToDefaultAsync(string workflowType);
         Task<WorkflowStatisticsDto?> GetWorkflowStatisticsAsync(string workflowType);
-        Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType);
+        Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType, string version);
+        Task<WorkflowConfigurationDto> GetWorkflowsByRequirementTypeAndIdAsync(string requirementType, string version);
+
         Task<WorkflowConfigurationDto?> CloneWorkflowAsync(Guid sourceId, string newName, string newType);
     }
 
