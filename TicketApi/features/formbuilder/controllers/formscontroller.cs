@@ -10,6 +10,7 @@ using TicketApi.Shared.Models.Entities;
 using TicketApi.Features.Authentication.Services;
 using TicketApi.Features.FormBuilder.DTO;
 using TicketApi.Features.FormBuilder.Services;
+using static TicketApi.Shared.Infrastructure.Utils.Helpers.VersionHelper;
 
 namespace TicketApi.Features.FormBuilder.Controllers
 {
@@ -100,6 +101,83 @@ namespace TicketApi.Features.FormBuilder.Controllers
         }
 
         /// <summary>
+        /// create new version from form config
+        /// </summary>
+        [HttpPost("{id:guid}/versions")]
+        public async Task<ActionResult<ApiResponse<FormConfigurationDto>>> CreateNewVersion(
+            Guid id,
+            [FromQuery] VersionType versionType = VersionType.Patch)
+        {
+            try
+            {
+                var newConfig = await _formService.CreateNewVersionAsync(id, versionType);
+                var dto = MapToDto(newConfig);
+
+                _logger.LogInformation("Created new version {Version} for form configuration {Id}",
+                    newConfig.Version, id);
+
+                return Ok(ApiResponse<FormConfigurationDto>.CreateSuccess(dto,
+                    $"Neue Version {newConfig.Version} erstellt"));
+            }
+            catch (ArgumentException ex)
+            {
+                return NotFound(ApiResponse<FormConfigurationDto>.CreateError(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error creating new version for form configuration {Id}", id);
+                return StatusCode(500, ApiResponse<FormConfigurationDto>.CreateError("Internal server error"));
+            }
+        }
+        /// <summary>
+        /// shows all versions from form config
+        /// </summary>
+        [HttpGet("{id:guid}/versions")]
+        public async Task<ActionResult<ApiResponse<List<FormConfigurationDto>>>> GetFormVersions(Guid id)
+        {
+            try
+            {
+                var versions = await _formService.GetFormVersionsAsync(id);
+                var dtos = versions.Select(MapToDto).ToList();
+
+                return Ok(ApiResponse<List<FormConfigurationDto>>.CreateSuccess(dtos));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error getting versions for form configuration {Id}", id);
+                return StatusCode(500, ApiResponse<List<FormConfigurationDto>>.CreateError("Internal server error"));
+            }
+        }
+
+        /// <summary>
+        /// activate version
+        /// </summary>
+        [HttpPatch("{id:guid}/activate")]
+        public async Task<ActionResult<ApiResponse<object>>> ActivateVersion(Guid id)
+        {
+            try
+            {
+                await _formService.ActivateVersionAsync(id);
+
+                _logger.LogInformation("Activated form configuration version {Id}", id);
+
+                return Ok(ApiResponse<object>.CreateSuccess(null, "Version aktiviert"));
+            }
+            catch (ArgumentException ex)
+            {
+                return NotFound(ApiResponse<object>.CreateError(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error activating form configuration {Id}", id);
+                return StatusCode(500, ApiResponse<object>.CreateError("Internal server error"));
+            }
+        }
+
+
+
+
+        /// <summary>
         /// Create new form configuration
         /// </summary>
         [HttpPost("configuration")]
@@ -119,7 +197,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
 
                 var currentUserId = HttpContext.Items["UserId"].ToString();
                 var currentUserName = (await _userService.GetUserByIdAsync(currentUserId))?.Name ?? "unknown";
-                
+
                 // Map request to entity
                 var entity = new FormConfiguration
                 {
@@ -135,7 +213,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                         permissions = request.Permissions,
                         lightMode = request.LightMode
                     }),
-                    Version = 1,
+                    Version = CreateInitialVersion(),
                     IsActive = request.IsActive,
                     HasLightMode = request.HasLightMode,
                     CreatedAt = DateTime.UtcNow,
@@ -207,7 +285,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 existingConfig.WorkflowStepId = request.WorkflowStepId ?? existingConfig.WorkflowStepId;
                 existingConfig.HasLightMode = request.HasLightMode ?? existingConfig.HasLightMode;
                 existingConfig.ModifiedAt = DateTime.UtcNow;
-                existingConfig.Version++;
+                IncrementVersion(existingConfig.Version);
 
                 // Update configuration data if provided
                 if (request.Sections != null || request.Fields != null ||
@@ -310,11 +388,11 @@ namespace TicketApi.Features.FormBuilder.Controllers
                     Id = Guid.NewGuid(),
                     FormConfigurationId = id,
                     Version = request.Version,
-                    TargetEnvironment = request.TargetEnvironment ?? "production",
-                    Status = "pending_review",
+                    Environment = request.TargetEnvironment ?? "production",
+                    ReviewStatus = "pending_review",
                     CreatedAt = DateTime.UtcNow,
                     CreatedBy = currentUserName,
-                    ReviewComment = request.ReviewComment
+                    ReviewComments = request.ReviewComment
                 };
 
                 var savedDeployment = await _formService.CreateDeploymentAsync(deployment);
@@ -328,7 +406,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error creating deployment for form configuration: {Id}", id);
-                return StatusCode(500, ApiResponse<FormDeploymentDto>.Error("Internal server error"));
+                return StatusCode(500, ApiResponse<FormDeploymentDto>.CreateError("Internal server error"));
             }
         }
 
@@ -343,32 +421,32 @@ namespace TicketApi.Features.FormBuilder.Controllers
             try
             {
                 var currentUserId = HttpContext.Items["UserId"].ToString();
-                var currentUserName = _userService.GetCurrentUserName();
+                var currentUserName = (await _userService.GetUserByIdAsync(currentUserId))?.Name ?? "unknown";
 
                 var deployment = await _formService.GetDeploymentByIdAsync(deploymentId);
                 if (deployment == null)
                 {
-                    return NotFound(ApiResponse<FormDeploymentDto>.Error("Deployment not found"));
+                    return NotFound(ApiResponse<FormDeploymentDto>.CreateError("Deployment not found"));
                 }
 
                 // 4-Eyes check: reviewer cannot be the same as creator
                 if (deployment.CreatedBy == currentUserName)
                 {
-                    return BadRequest(ApiResponse<FormDeploymentDto>.Error(
+                    return BadRequest(ApiResponse<FormDeploymentDto>.CreateError(
                         "You cannot review your own deployment (4-Eyes principle)"));
                 }
 
-                if (deployment.Status != "pending_review")
+                if (deployment.ReviewStatus != "pending_review")
                 {
-                    return BadRequest(ApiResponse<FormDeploymentDto>.Error(
-                        $"Deployment cannot be reviewed in current status: {deployment.Status}"));
+                    return BadRequest(ApiResponse<FormDeploymentDto>.CreateError(
+                        $"Deployment cannot be reviewed in current status: {deployment.ReviewStatus}"));
                 }
 
                 // Update deployment
-                deployment.ReviewedAt = DateTime.UtcNow;
+                deployment.ReviewDate = DateTime.UtcNow;
                 deployment.ReviewedBy = currentUserName;
-                deployment.ReviewComment = request.Comment;
-                deployment.Status = request.Approved ? "approved" : "rejected";
+                deployment.ReviewComments = request.Comment;
+                deployment.ReviewStatus = request.Approved ? "approved" : "rejected";
 
                 var updatedDeployment = await _formService.UpdateDeploymentAsync(deployment);
 
@@ -376,8 +454,8 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 if (request.Approved)
                 {
                     await _formService.ExecuteDeploymentAsync(deploymentId);
-                    updatedDeployment.Status = "deployed";
-                    updatedDeployment.DeployedAt = DateTime.UtcNow;
+                    updatedDeployment.ReviewStatus = "deployed";
+                    updatedDeployment.DeploymentDate = DateTime.UtcNow;
                     updatedDeployment = await _formService.UpdateDeploymentAsync(updatedDeployment);
                 }
 
@@ -549,12 +627,12 @@ namespace TicketApi.Features.FormBuilder.Controllers
         /// Get workflow steps for requirement type
         /// </summary>
         [HttpGet("/api/workflows/requirement-type/{requirementType}/steps")]
-        public async Task<ActionResult<ApiResponse<List<WorkflowStepDto>>>> GetWorkflowSteps(string requirementType)
+        public async Task<ActionResult<ApiResponse<List<WorkflowStepDto>>>> GetWorkflowSteps(string requirementType, string version = "")
         {
             try
             {
-                var steps = await _workflowService.GetWorkflowStepsAsync(requirementType);
-                var dtos = steps.Select(s => new WorkflowStepDto { Id = s.Id, Title = s.Name }).ToList();
+                var steps = (await _workflowService.GetWorkflowsByRequirementTypeAndIdAsync(requirementType, version)).Steps;               
+                var dtos = steps.Select(s => new WorkflowStepDto { Id = s.Id, Title = s.Title }).ToList();
 
                 return Ok(ApiResponse<List<WorkflowStepDto>>.CreateSuccess(dtos));
             }
@@ -582,7 +660,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 WorkflowStepId = entity.WorkflowStepId,
                 Sections = JsonConvert.DeserializeObject<List<FormSectionDto>>(configData?.sections?.ToString() ?? "[]"),
                 Fields = JsonConvert.DeserializeObject<List<FormFieldDto>>(configData?.fields?.ToString() ?? "[]"),
-                Version = entity.Version ?? 0,
+                Version = entity.Version,
                 IsActive = entity.IsActive ?? false,
                 HasLightMode = entity.HasLightMode ?? false,
                 CreatedAt = entity.CreatedAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
@@ -600,14 +678,14 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 Id = entity.Id.ToString(),
                 FormConfigurationId = entity.FormConfigurationId.ToString(),
                 Version = entity.Version,
-                Status = entity.Status,
-                TargetEnvironment = entity.TargetEnvironment,
-                CreatedAt = entity.CreatedAt.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                Status = entity.ReviewStatus,
+                TargetEnvironment = entity.Environment,
+                CreatedAt = entity.CreatedAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
                 CreatedBy = entity.CreatedBy,
-                ReviewedAt = entity.ReviewedAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
+                ReviewedAt = entity.ReviewDate?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ"),
                 ReviewedBy = entity.ReviewedBy,
-                ReviewComment = entity.ReviewComment,
-                DeployedAt = entity.DeployedAt?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+                ReviewComment = entity.ReviewComments,
+                DeployedAt = entity.DeploymentDate?.ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
             };
         }
 
