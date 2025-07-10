@@ -1,0 +1,435 @@
+
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
+using TicketApi.Features.WorkflowBuilder.DTO.RequirementsApi.DTOs;
+using TicketApi.Shared.Models.Entities;
+
+namespace TicketApi.Features.WorkflowBuilder.Services
+{
+
+    namespace RequirementsApi.Services
+    {
+        public class WorkflowService : IWorkflowService
+        {
+            private readonly RequirementsDbContext _context;
+            private readonly ILogger<WorkflowService> _logger;
+
+    public WorkflowService(RequirementsDbContext context, ILogger<WorkflowService> logger)
+            {
+                _context = context;
+                _logger = logger;
+            }
+
+            public async Task<List<WorkflowConfigurationDto>> GetAllWorkflowConfigurationsAsync()
+            {
+                var workflows = await _context.WorkflowConfigurations
+                    .Where(w => w.IsActive == true)
+                    .OrderBy(w => w.RequirementType)
+                    .ThenBy(w => w.Name)
+                    .ToListAsync();
+
+                return workflows.Select(MapToDto).ToList();
+            }
+
+            public async Task<WorkflowConfigurationDto?> GetWorkflowByTypeAsync(string workflowType)
+            {
+                var workflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.RequirementType == workflowType && w.IsActive == true);
+
+                return workflow != null ? MapToDto(workflow) : null;
+            }
+
+            public async Task<WorkflowConfigurationDto?> GetWorkflowByIdAsync(Guid id)
+            {
+                var workflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.Id == id);
+
+                return workflow != null ? MapToDto(workflow) : null;
+            }
+
+            public async Task<WorkflowConfigurationDto> CreateWorkflowConfigurationAsync(CreateWorkflowConfigurationDto request)
+            {
+                // Validate that workflow type doesn't already exist
+                var existingWorkflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.RequirementType == request.Type && w.IsActive == true);
+
+                if (existingWorkflow != null)
+                {
+                    throw new ArgumentException($"Workflow type '{request.Type}' already exists");
+                }
+
+                // Validate workflow structure
+                var validationResult = await ValidateWorkflowAsync(new WorkflowConfigurationDto
+                {
+                    Steps = request.Steps,
+                    Metadata = request.Metadata
+                });
+
+                if (!validationResult.IsValid)
+                {
+                    throw new ArgumentException($"Invalid workflow configuration: {string.Join(", ", validationResult.Errors)}");
+                }
+
+                var workflow = new WorkflowConfiguration
+                {
+                    Id = Guid.NewGuid(),
+                    Name = request.Name,
+                    RequirementType = request.Type,
+                    Description = request.Description,
+                    IsActive = true,
+                    Version = 1,
+                    CreatedAt = DateTime.UtcNow,
+                    ModifiedAt = DateTime.UtcNow,
+                    CreatedBy = "system", // TODO: Get from current user context
+                    //ModifiedBy = "system",
+                    ConfigurationData = JsonSerializer.Serialize(new
+                    {
+                        steps = request.Steps,
+                        metadata = request.Metadata
+                    })
+                };
+
+                _context.WorkflowConfigurations.Add(workflow);
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Created workflow configuration {WorkflowType} with ID {Id}", request.Type, workflow.Id);
+
+                return MapToDto(workflow);
+            }
+
+            public async Task<WorkflowConfigurationDto?> UpdateWorkflowConfigurationAsync(Guid id, UpdateWorkflowConfigurationDto request)
+            {
+                var workflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.Id == id);
+
+                if (workflow == null)
+                    return null;
+
+                // Update fields if provided
+                if (!string.IsNullOrEmpty(request.Name))
+                    workflow.Name = request.Name;
+
+                if (!string.IsNullOrEmpty(request.Description))
+                    workflow.Description = request.Description;
+
+                if (request.IsActive.HasValue)
+                    workflow.IsActive = request.IsActive.Value;
+
+                if (request.Steps != null || request.Metadata != null)
+                {
+                    // Parse existing configuration
+                    var existingConfig = JsonSerializer.Deserialize<JsonElement>(workflow.ConfigurationData);
+
+                    // Update steps and metadata
+                    var updatedConfig = new
+                    {
+                        steps = request.Steps ?? JsonSerializer.Deserialize<List<WorkflowStepDto>>(existingConfig.GetProperty("steps").GetRawText()),
+                        metadata = request.Metadata ?? JsonSerializer.Deserialize<WorkflowMetadataDto>(existingConfig.GetProperty("metadata").GetRawText())
+                    };
+
+                    // Validate updated workflow
+                    var validationResult = await ValidateWorkflowAsync(new WorkflowConfigurationDto
+                    {
+                        Steps = updatedConfig.steps ?? new(),
+                        Metadata = updatedConfig.metadata ?? new()
+                    });
+
+                    if (!validationResult.IsValid)
+                    {
+                        throw new ArgumentException($"Invalid workflow configuration: {string.Join(", ", validationResult.Errors)}");
+                    }
+
+                    workflow.ConfigurationData = JsonSerializer.Serialize(updatedConfig);
+                }
+
+                workflow.ModifiedAt = DateTime.UtcNow;
+                workflow.ModifiedBy = "system"; // TODO: Get from current user context
+                workflow.Version++;
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Updated workflow configuration {Id}", id);
+
+                return MapToDto(workflow);
+            }
+
+            public async Task<bool> DeleteWorkflowConfigurationAsync(Guid id)
+            {
+                var workflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.Id == id);
+
+                if (workflow == null)
+                    return false;
+
+                // Soft delete by setting IsActive to false
+                workflow.IsActive = false;
+                workflow.ModifiedAt = DateTime.UtcNow;
+                workflow.ModifiedBy = "system"; // TODO: Get from current user context
+
+                await _context.SaveChangesAsync();
+
+                _logger.LogInformation("Deleted (soft) workflow configuration {Id}", id);
+
+                return true;
+            }
+
+            public async Task<WorkflowValidationResultDto> ValidateWorkflowAsync(WorkflowConfigurationDto workflow)
+            {
+                var result = new WorkflowValidationResultDto { IsValid = true };
+
+                // Validate steps exist
+                if (!workflow.Steps.Any())
+                {
+                    result.Errors.Add("Workflow must have at least one step");
+                    result.IsValid = false;
+                }
+
+                // Validate step order
+                var expectedOrder = 1;
+                foreach (var step in workflow.Steps.OrderBy(s => s.Order))
+                {
+                    if (step.Order != expectedOrder)
+                    {
+                        result.Errors.Add($"Step order must be sequential. Expected {expectedOrder}, found {step.Order}");
+                        result.IsValid = false;
+                    }
+                    expectedOrder++;
+                }
+
+                // Validate estimated days
+                if (workflow.Steps.Any(step => step.EstimatedDays <= 0))
+                {
+                    result.Errors.Add("All steps must have estimated days greater than 0");
+                    result.IsValid = false;
+                }
+
+                // Check for approval steps (business rule)
+                var hasApprovalSteps = workflow.Steps.Any(step => step.Type == "APPROVAL");
+                if (!hasApprovalSteps && workflow.Type != "TIA-Anforderung")
+                {
+                    result.Warnings.Add("Workflow should contain at least one approval step");
+                }
+
+                // Generate statistics
+                result.Statistics = new WorkflowStatisticsDto
+                {
+                    TotalSteps = workflow.Steps.Count,
+                    TotalEstimatedDays = workflow.Steps.Sum(s => s.EstimatedDays),
+                    StepsByType = workflow.Steps.GroupBy(s => s.Type).ToDictionary(g => g.Key, g => g.Count()),
+                    StepsByResponsible = workflow.Steps.GroupBy(s => s.Responsible).ToDictionary(g => g.Key, g => g.Count()),
+                    RequiredRoles = workflow.Steps.SelectMany(s => s.Permissions.AllowedRoles).Distinct().ToList(),
+                    HasApprovalSteps = hasApprovalSteps,
+                    HasConditionalSteps = workflow.Steps.Any(s => s.Conditions.Any())
+                };
+
+                return result;
+            }
+
+            public async Task<Dictionary<string, WorkflowConfigurationDto>> GetWorkflowTemplatesAsync()
+            {
+                // Return default templates for common workflow types
+                await Task.Delay(10); // Simulate async operation
+
+                return new Dictionary<string, WorkflowConfigurationDto>
+                {
+                    ["Kleinanforderung"] = CreateDefaultWorkflow("Kleinanforderung"),
+                    ["Großanforderung"] = CreateDefaultWorkflow("Großanforderung"),
+                    ["TIA-Anforderung"] = CreateDefaultWorkflow("TIA-Anforderung"),
+                    ["Supportleistung"] = CreateDefaultWorkflow("Supportleistung")
+                };
+            }
+
+            public async Task<byte[]?> ExportWorkflowAsync(Guid id)
+            {
+                var workflow = await GetWorkflowByIdAsync(id);
+                if (workflow == null)
+                    return null;
+
+                var exportData = new
+                {
+                    workflow,
+                    exportedAt = DateTime.UtcNow,
+                    exportedBy = "system", // TODO: Get from current user context
+                    version = "1.0"
+                };
+
+                var json = JsonSerializer.Serialize(exportData, new JsonSerializerOptions { WriteIndented = true });
+                return System.Text.Encoding.UTF8.GetBytes(json);
+            }
+
+            public async Task<WorkflowConfigurationDto> ImportWorkflowAsync(Stream fileStream)
+            {
+                using var reader = new StreamReader(fileStream);
+                var json = await reader.ReadToEndAsync();
+
+                try
+                {
+                    var importData = JsonSerializer.Deserialize<JsonElement>(json);
+                    var workflowData = importData.GetProperty("workflow");
+
+                    var workflow = JsonSerializer.Deserialize<WorkflowConfigurationDto>(workflowData.GetRawText());
+
+                    if (workflow == null)
+                        throw new ArgumentException("Invalid workflow file format");
+
+                    // Create new workflow from imported data
+                    var createRequest = new CreateWorkflowConfigurationDto
+                    {
+                        Name = $"{workflow.Name} (Imported)",
+                        Type = $"{workflow.Type}_Import_{DateTime.UtcNow:yyyyMMdd}",
+                        Description = workflow.Description,
+                        Steps = workflow.Steps,
+                        Metadata = workflow.Metadata
+                    };
+
+                    return await CreateWorkflowConfigurationAsync(createRequest);
+                }
+                catch (JsonException ex)
+                {
+                    throw new ArgumentException("Invalid JSON format", ex);
+                }
+            }
+
+            public async Task<WorkflowConfigurationDto?> ResetWorkflowToDefaultAsync(string workflowType)
+            {
+                var templates = await GetWorkflowTemplatesAsync();
+
+                if (!templates.TryGetValue(workflowType, out var defaultTemplate))
+                    return null;
+
+                // Find existing workflow and deactivate it
+                var existingWorkflow = await _context.WorkflowConfigurations
+                    .FirstOrDefaultAsync(w => w.RequirementType == workflowType && w.IsActive == true);
+
+                if (existingWorkflow != null)
+                {
+                    existingWorkflow.IsActive = false;
+                    existingWorkflow.ModifiedAt = DateTime.UtcNow;
+                }
+
+                // Create new workflow from template
+                var createRequest = new CreateWorkflowConfigurationDto
+                {
+                    Name = defaultTemplate.Name,
+                    Type = workflowType,
+                    Description = defaultTemplate.Description,
+                    Steps = defaultTemplate.Steps,
+                    Metadata = defaultTemplate.Metadata
+                };
+
+                return await CreateWorkflowConfigurationAsync(createRequest);
+            }
+
+            public async Task<WorkflowStatisticsDto?> GetWorkflowStatisticsAsync(string workflowType)
+            {
+                var workflow = await GetWorkflowByTypeAsync(workflowType);
+                if (workflow == null)
+                    return null;
+
+                var validationResult = await ValidateWorkflowAsync(workflow);
+                return validationResult.Statistics;
+            }
+
+            public async Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType)
+            {
+                var workflows = await _context.WorkflowConfigurations
+                    .Where(w => w.IsActive == true && w.RequirementType == requirementType)
+                    .ToListAsync();
+
+                return workflows.Select(MapToDto).ToList();
+            }
+
+            public async Task<WorkflowConfigurationDto?> CloneWorkflowAsync(Guid sourceId, string newName, string newType)
+            {
+                var sourceWorkflow = await GetWorkflowByIdAsync(sourceId);
+                if (sourceWorkflow == null)
+                    return null;
+
+                var createRequest = new CreateWorkflowConfigurationDto
+                {
+                    Name = newName,
+                    Type = newType,
+                    Description = $"Cloned from {sourceWorkflow.Name}",
+                    Steps = sourceWorkflow.Steps,
+                    Metadata = sourceWorkflow.Metadata
+                };
+
+                return await CreateWorkflowConfigurationAsync(createRequest);
+            }
+
+            private WorkflowConfigurationDto MapToDto(WorkflowConfiguration entity)
+            {
+                var configData = JsonSerializer.Deserialize<JsonElement>(entity.ConfigurationData);
+
+                return new WorkflowConfigurationDto
+                {
+                    Id = entity.Id,
+                    Name = entity.Name,
+                    Type = entity.RequirementType,
+                    Description = entity.Description,
+                    IsActive = entity.IsActive,
+                    Version = entity.Version,
+                    CreatedAt = entity.CreatedAt,
+                    ModifiedAt = entity.ModifiedAt,
+                    CreatedBy = entity.CreatedBy,
+                    ModifiedBy = entity.ModifiedBy,
+                    Steps = JsonSerializer.Deserialize<List<WorkflowStepDto>>(configData.GetProperty("steps").GetRawText()) ?? new(),
+                    Metadata = JsonSerializer.Deserialize<WorkflowMetadataDto>(configData.GetProperty("metadata").GetRawText()) ?? new()
+                };
+            }
+
+            private WorkflowConfigurationDto CreateDefaultWorkflow(string type)
+            {
+                var steps = type switch
+                {
+                    "Kleinanforderung" => new List<WorkflowStepDto>
+            {
+                new() { Id = "step-1", Title = "Antrag erstellen", Type = "TASK", Responsible = "AG", EstimatedDays = 1, Order = 1, Required = true },
+                new() { Id = "step-2", Title = "Prüfung", Type = "TASK", Responsible = "AN", EstimatedDays = 2, Order = 2, Required = true },
+                new() { Id = "step-3", Title = "Genehmigung", Type = "APPROVAL", Responsible = "AG", EstimatedDays = 1, Order = 3, Required = true },
+                new() { Id = "step-4", Title = "Umsetzung", Type = "TASK", Responsible = "AN", EstimatedDays = 3, Order = 4, Required = true }
+            },
+                    "Großanforderung" => new List<WorkflowStepDto>
+            {
+                new() { Id = "step-1", Title = "Antrag erstellen", Type = "TASK", Responsible = "AG", EstimatedDays = 2, Order = 1, Required = true },
+                new() { Id = "step-2", Title = "Architektur-Review", Type = "TASK", Responsible = "AN", EstimatedDays = 5, Order = 2, Required = true },
+                new() { Id = "step-3", Title = "Fachliche Genehmigung", Type = "APPROVAL", Responsible = "AG", EstimatedDays = 3, Order = 3, Required = true },
+                new() { Id = "step-4", Title = "Technische Genehmigung", Type = "APPROVAL", Responsible = "AN", EstimatedDays = 2, Order = 4, Required = true },
+                new() { Id = "step-5", Title = "Umsetzung", Type = "TASK", Responsible = "AN", EstimatedDays = 14, Order = 5, Required = true },
+                new() { Id = "step-6", Title = "Testing", Type = "TASK", Responsible = "AN", EstimatedDays = 5, Order = 6, Required = true },
+                new() { Id = "step-7", Title = "Abnahme", Type = "APPROVAL", Responsible = "AG", EstimatedDays = 3, Order = 7, Required = true }
+            },
+                    _ => new List<WorkflowStepDto>
+            {
+                new() { Id = "step-1", Title = "Antrag erstellen", Type = "TASK", Responsible = "AG", EstimatedDays = 1, Order = 1, Required = true },
+                new() { Id = "step-2", Title = "Bearbeitung", Type = "TASK", Responsible = "AN", EstimatedDays = 2, Order = 2, Required = true }
+            }
+                };
+
+                return new WorkflowConfigurationDto
+                {
+                    Id = Guid.NewGuid(),
+                    Name = $"Standard {type} Workflow",
+                    Type = type,
+                    Description = $"Standard Workflow für {type}",
+                    IsActive = true,
+                    Version = 1,
+                    CreatedAt = DateTime.UtcNow,
+                    ModifiedAt = DateTime.UtcNow,
+                    CreatedBy = "system",
+                    ModifiedBy = "system",
+                    Steps = steps,
+                    Metadata = new WorkflowMetadataDto
+                    {
+                        Version = "1.0",
+                        CreatedBy = "system",
+                        TotalEstimatedDays = steps.Sum(s => s.EstimatedDays)
+                    }
+                };
+            }
+        }
+
+}
+
+
+}
