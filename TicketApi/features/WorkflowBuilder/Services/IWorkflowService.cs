@@ -1,0 +1,23 @@
+using TicketApi.Features.WorkflowBuilder.DTO.RequirementsApi.DTOs;
+
+namespace TicketApi.Features.WorkflowBuilder.Services
+{
+    public interface IWorkflowService
+    {
+        Task<List<WorkflowConfigurationDto>> GetAllWorkflowConfigurationsAsync();
+        Task<WorkflowConfigurationDto?> GetWorkflowByTypeAsync(string workflowType);
+        Task<WorkflowConfigurationDto?> GetWorkflowByIdAsync(Guid id);
+        Task<WorkflowConfigurationDto> CreateWorkflowConfigurationAsync(CreateWorkflowConfigurationDto request);
+        Task<WorkflowConfigurationDto?> UpdateWorkflowConfigurationAsync(Guid id, UpdateWorkflowConfigurationDto request);
+        Task<bool> DeleteWorkflowConfigurationAsync(Guid id);
+        Task<WorkflowValidationResultDto> ValidateWorkflowAsync(WorkflowConfigurationDto workflow);
+        Task<Dictionary<string, WorkflowConfigurationDto>> GetWorkflowTemplatesAsync();
+        Task<byte[]?> ExportWorkflowAsync(Guid id);
+        Task<WorkflowConfigurationDto> ImportWorkflowAsync(Stream fileStream);
+        Task<WorkflowConfigurationDto?> ResetWorkflowToDefaultAsync(string workflowType);
+        Task<WorkflowStatisticsDto?> GetWorkflowStatisticsAsync(string workflowType);
+        Task<List<WorkflowConfigurationDto>> GetWorkflowsByRequirementTypeAsync(string requirementType);
+        Task<WorkflowConfigurationDto?> CloneWorkflowAsync(Guid sourceId, string newName, string newType);
+    }
+
+}
