@@ -1,0 +1,34 @@
+﻿namespace TicketApi.Shared.Models;
+
+public partial class Berechtigung
+{
+    public int Id { get; set; }
+
+    public string Gruppenname { get; set; } = null!;
+
+    public string? Userid { get; set; }
+
+    public string? Persname { get; set; }
+
+    public bool? Fuehrend { get; set; }
+
+    public string? Doe { get; set; }
+
+    public string? Doename { get; set; }
+
+    public string? Darfdoe { get; set; }
+
+    public string? Darfdoename { get; set; }
+
+    public string? Vorhabenid { get; set; }
+
+    public string? Vorhabenname { get; set; }
+
+    public string? Reaobjtyp { get; set; }
+
+    public int? Reaobjid { get; set; }
+
+    public string? Reaobjname { get; set; }
+
+    public bool? Schreibzugriff { get; set; }
+}

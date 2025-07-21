@@ -1,0 +1,20 @@
+﻿namespace TicketApi.Shared.Models
+{
+    /// <summary>
+    /// Standardantwort für den Gesundheitszustand.
+    /// </summary>
+    public class HealthResponse
+    {
+        public string Status { get; set; }
+        public DateTime Timestamp { get; set; }
+    }
+
+    /// <summary>
+    /// Antwort im Fehlerfall.
+    /// </summary>
+    public class ErrorResponse
+    {
+        public string Status { get; set; }
+        public string Error { get; set; }
+    }
+}

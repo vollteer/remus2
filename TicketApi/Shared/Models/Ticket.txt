@@ -1,0 +1,339 @@
+﻿using System.ComponentModel.DataAnnotations.Schema;
+using System.Diagnostics.CodeAnalysis;
+
+namespace TicketApi.Shared.Models;
+
+[Table("Anfo")]
+public partial class Ticket
+{
+    public int Id { get; set; }
+
+    [NotNull]
+    public int AnfoNr { get; set; }
+
+    public string? Anfotyp { get; set; }
+
+    public string? Anfoart { get; set; }
+
+    public int? FachReferenzZuAnfoNr { get; set; }
+
+    public int? ReleaseReferenzZuAnfoNr { get; set; }
+
+    public string? Status { get; set; }
+
+    public string? PrioAnfokategorie { get; set; }
+
+    public string? PrioAnfokategorieSonstiges { get; set; }
+
+    public string? Prio { get; set; }
+
+    public string? Reaobj { get; set; }
+
+    public int? ReaobjId { get; set; }
+
+    public string? ReaobjKuerzel { get; set; }
+
+    public DateTime? ErstellerDatum { get; set; }
+
+    public string? ErstellerName { get; set; }
+
+    public string? ErstellerUserid { get; set; }
+
+    public string? ErstellerDoe { get; set; }
+
+    public string? Release { get; set; }
+
+    public string? Anfocode { get; set; }
+
+    public string? Anfovorgehensart { get; set; }
+
+    public string? BearbeiterName { get; set; }
+
+    public string? BearbeiterUserid { get; set; }
+
+    public string? BearbeiterDoe { get; set; }
+
+    public string? Vorhaben { get; set; }
+
+    public string? VorhabenNr { get; set; }
+
+    public decimal? AufwandSchaetzungFb { get; set; }
+
+    public decimal? AufwandPlan { get; set; }
+
+    public decimal? AufwandIst { get; set; }
+
+    public string? Bezeichnung { get; set; }
+
+    public string? Ausgangssituation { get; set; }
+
+    public string? Zielbeschreibung { get; set; }
+
+    public DateTime? FbStarttermin { get; set; }
+
+    public DateTime? FbTesttermin { get; set; }
+
+    public DateTime? FbEndtermin { get; set; }
+
+    public DateTime? ItStarttermin { get; set; }
+
+    public DateTime? ItTesttermin { get; set; }
+
+    public DateTime? ItEndtermin { get; set; }
+
+    public string? ZustSmName { get; set; }
+
+    public string? ZustSmUserid { get; set; }
+
+    public string? ZustSmDoe { get; set; }
+
+    public string? ZustFabName { get; set; }
+
+    public string? ZustFabUserid { get; set; }
+
+    public string? ZustFabDoe { get; set; }
+
+    public string? ZustFbitkoName { get; set; }
+
+    public string? ZustFbitkoUserid { get; set; }
+
+    public string? ZustFbitkoDoe { get; set; }
+
+    public string? ZustAmName { get; set; }
+
+    public string? ZustAmUserid { get; set; }
+
+    public string? ZustAmDoe { get; set; }
+
+    public string? ZustItsvName { get; set; }
+
+    public string? ZustItsvUserid { get; set; }
+
+    public string? ZustItsvDoe { get; set; }
+
+    public string? ZustRmName { get; set; }
+
+    public string? ZustRmUserid { get; set; }
+
+    public string? ZustRmDoe { get; set; }
+
+    public string? ZustSdName { get; set; }
+
+    public string? ZustSdUserid { get; set; }
+
+    public string? ZustSdDoe { get; set; }
+
+    public string? ZustTmName { get; set; }
+
+    public string? ZustTmUserid { get; set; }
+
+    public string? ZustBvName { get; set; }
+
+    public string? ZustBvUserid { get; set; }
+
+    public string? ZustFachlVerantwUserid { get; set; }
+
+    public string? ZustFachlVerantwName { get; set; }
+
+    public string? ZustFachlVerantwDoe { get; set; }
+
+    public decimal? Nutzen { get; set; }
+
+    public bool? CheckIsmSaErforderlich { get; set; }
+
+    public string? CheckIsmSaErgebnis { get; set; }
+
+    public string? CheckIsmSaPrueferName { get; set; }
+
+    public bool? CheckItstratNeuesAws { get; set; }
+
+    public bool? CheckItstratNeueSst { get; set; }
+
+    public bool? CheckItstratNeueWerkzeuge { get; set; }
+
+    public bool? CheckItstratCheckErf { get; set; }
+
+    public string? CheckItstratErgebnis { get; set; }
+
+    public string? CheckItstratPrueferName { get; set; }
+
+    public bool? CheckAuswirkungsanalyse { get; set; }
+
+    public bool? CheckSchutzbedarf { get; set; }
+
+    public bool? CheckNachGoBderforderlich { get; set; }
+
+    public bool? CheckItgov { get; set; }
+
+    public string? CheckItgovErgebnis { get; set; }
+
+    public string? CheckItgovName { get; set; }
+
+    public bool? CheckItstratMgmt { get; set; }
+
+    public string? CheckItstratMgmtErgebnis { get; set; }
+
+    public string? CheckItstratMgmtName { get; set; }
+
+    public bool? CheckStratRlvzGeschstrategie { get; set; }
+
+    public bool? CheckStratRlvzNormregelungen { get; set; }
+
+    public bool? CheckStratRlvzGrossprojekt { get; set; }
+
+    public bool? CheckFreigabeUmsetzung { get; set; }
+
+    public string? CheckFreigabeUmsetzungUnterschrift { get; set; }
+
+    public bool? KeinAekoErforderlich { get; set; }
+
+    public string? LockBearbeiterName { get; set; }
+
+    public string? LockBearbeiterUserid { get; set; }
+
+    public DateTime? LockTime { get; set; }
+
+    public DateTime? BearbeiterZugewiesenAm { get; set; }
+
+    public DateTime? BearbeiterErinnerdatum { get; set; }
+
+    public DateTime? BearbeiterErledigungsdatum { get; set; }
+
+    public string? LetzteBemerkung { get; set; }
+
+    public bool? Beendet { get; set; }
+
+    public DateTime? BeendetAm { get; set; }
+
+    public string? Aekos { get; set; }
+
+    public string? ExterneReferenzen { get; set; }
+
+    public bool? AbnTestprotokollregelcheckja { get; set; }
+
+    public string? AbnTestprotokollvorhandenUnterschrift { get; set; }
+
+    public bool? AbnNeuEntwicklung { get; set; }
+
+    public bool? AbnEigenEntwicklung { get; set; }
+
+    public int? AbnUmfangDerFunktionalenAenderung { get; set; }
+
+    public decimal? AbnTestAufwand { get; set; }
+
+    public int? AbnTestRegelNummer { get; set; }
+
+    public string? AbnTestRegelAnmerkung { get; set; }
+
+    public bool? AbnTestprotokollAuftraggeberCheckJa { get; set; }
+
+    public string? AbnTestProtokollAuftraggeberUnterschrift { get; set; }
+
+    public string? AbnTestAuftraggeberAnmerkung { get; set; }
+
+    public bool? AbnTestprotokollAwsbetreuerCheckJa { get; set; }
+
+    public string? AbnTestProtokollAwsbetreuerUnterschrift { get; set; }
+
+    public string? AbnTestAwsbetreuerAnmerkung { get; set; }
+
+    public bool? AbnAbnahmeauftraggebercheckja { get; set; }
+
+    public string? AbnAbnahmeAuftraggeberUnterschrift { get; set; }
+
+    public string? AbnAbnahmeAuftraggeberAnmerkung { get; set; }
+
+    public bool? AbnAbnahmeawsbetreuercheckja { get; set; }
+
+    public string? AbnAbnahmeAwsbetreuerUnterschrift { get; set; }
+
+    public string? AbnAbnahmeAwsbetreuerAnmerkung { get; set; }
+
+    public bool? AbnKeineExtRefErforderlich { get; set; }
+
+    public bool? AbnActivateAbnahme { get; set; }
+
+    public bool? AbnExtRefVollstaendig { get; set; }
+
+    public string? AbnAbnahmeAuftraggeberSchulungUnterschrift { get; set; }
+
+    public bool? AbnAbnahmeAuftraggeberSchulungCheckJa { get; set; }
+
+    public string? AbnAbnahmeAwsbcodeReviewUnterschrift { get; set; }
+
+    public bool? AbnAbnahmeAwsbcodeReviewCheckJa { get; set; }
+
+    public string? AbnAbnahmeAwsbcodeReviewAnmerkung { get; set; }
+
+    public bool? ProdProduktivsetzungerfolgreich { get; set; }
+
+    public string? ProdProduktivsetzungerfolgreichUnterschrift { get; set; }
+
+    public string? ProdIncidentTicketbeiFehler { get; set; }
+
+    public decimal? LaSumEdvK { get; set; }
+
+    public decimal? LaSumAfa { get; set; }
+
+    public decimal? LaSumFbSk { get; set; }
+
+    public decimal? LaSumSonst { get; set; }
+
+    public decimal? LaSumFbInt { get; set; }
+
+    public decimal? LaSumFbExt { get; set; }
+
+    public decimal? LaSumItInt { get; set; }
+
+    public decimal? LaSumItExt { get; set; }
+
+    public decimal? LaPtFbInt { get; set; }
+
+    public decimal? LaPtFbExt { get; set; }
+
+    public decimal? LaPtItInt { get; set; }
+
+    public decimal? LaPtItExt { get; set; }
+
+    public bool? CheckCodereviewErforderlich { get; set; }
+
+    public string? ZustAgName { get; set; }
+
+    public string? ZustAgUserid { get; set; }
+
+    public string? ZustAgDoe { get; set; }
+
+    public bool? CheckPersonenbezogeneDaten { get; set; }
+
+    public string? CheckPersonenbezogeneDatenPrueferName { get; set; }
+
+    public bool? CheckDatenschutzFolgeabschaetzung { get; set; }
+
+    public string? CheckDatenschutzFolgeabschaetzungPrueferName { get; set; }
+
+    public DateTime? Abnahmetermin { get; set; }
+
+    public DateTime? CodeFreeze { get; set; }
+
+    public DateTime? ScopeFreeze { get; set; }
+
+    public string? CheckAuswirkungsanalyseBegruendung { get; set; }
+
+    public bool? ProdReleaseDokuVollstaendig { get; set; }
+
+    public string? ProdReleaseDokuVollstaendigUnterschrift { get; set; }
+
+    public string? ProdReleaseDokuUnvollstaendigBegruendung { get; set; }
+
+    public bool? CheckTomcheckliste { get; set; }
+
+    public string? CheckTomchecklistePrueferName { get; set; }
+
+    public bool? AbnAbnahmeversioniertcheckja { get; set; }
+
+    public string? AbnAbnahmeVersionedunterschrift { get; set; }
+
+    public string? AbnAbnahmeVersionedanmerkung { get; set; }
+
+    public DateTime? ReleaseStart { get; set; }
+}

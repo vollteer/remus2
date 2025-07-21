@@ -1,0 +1,242 @@
+using System.Text.Json;
+using Serilog;
+using HealthChecks.UI.Client;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.OData;
+using Microsoft.AspNetCore.OData.Routing.Conventions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.OData.ModelBuilder;
+using Microsoft.OpenApi.Models;
+using TicketApi.Features.Authentication.Services;
+using TicketApi.Features.FormBuilder.Services;
+using TicketApi.Features.HealthCheck.Configuration;
+using TicketApi.Features.HealthCheck.Filters;
+using TicketApi.Features.TicketSearch.Filters;
+using TicketApi.Features.TicketSearch.Services;
+using TicketApi.Features.WorkflowBuilder.Services;
+using TicketApi.Shared;
+using TicketApi.Shared.Infrastructure.Filters;
+using TicketApi.Shared.Models;
+using TicketApi.Shared.Models.Entities;
+
+
+var builder = WebApplication.CreateBuilder(args);
+var connectionStringRemus = builder.Configuration.GetConnectionString("Remus");
+var connectionStringRequirements = builder.Configuration.GetConnectionString("Requirements");
+
+
+// Lade die Server-URLs aus der Konfiguration
+var serversSection = builder.Configuration.GetSection("Swagger:Servers");
+var environmentUrls = serversSection.GetChildren()
+    .ToDictionary(x => x.Key, x => x.Value);
+
+if (!environmentUrls.Any())
+{
+    throw new InvalidOperationException("Keine Server-URLs in der Konfigurationsdatei gefunden.");
+}
+// logs
+//builder.Logging.ClearProviders();
+//builder.Logging.AddConsole();
+builder.Host.UseSerilog((context, config) => config.ReadFrom.Configuration(context.Configuration));
+builder.Configuration.AddEnvironmentVariables();
+
+var origins = "localhost";
+
+// odata config
+var modelBuilder = new ODataConventionModelBuilder();
+
+modelBuilder.EntitySet<Ticket>("Tickets");
+
+// filter controller using custom attribute
+builder.Services.AddControllers().AddJsonOptions(options => 
+{ options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+    options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+})
+
+    .ConfigureApplicationPartManager(partManager =>
+{
+
+    partManager.FeatureProviders.Clear(); // deactivate automatic controller detection
+
+    partManager.FeatureProviders.Add(new CustomControllerFilter());
+})
+
+    .AddOData(
+    options =>
+    {
+        options.Conventions.Remove(options.Conventions.OfType<MetadataRoutingConvention>().First());
+        options
+        .Select().Filter().OrderBy().Expand().Count().SetMaxTop(1000)
+        .AddRouteComponents(
+            "api/tickets",
+            modelBuilder.GetEdmModel());
+    });
+
+builder.Services.AddHttpContextAccessor();
+
+builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IWorkflowService, WorkflowService>();
+builder.Services.AddScoped<IFormConfigurationService, FormConfigurationService>();
+
+
+builder.Services.AddDbContext<RemusContext>(options =>
+    options.UseSqlServer(
+        connectionStringRemus,
+        (SqlServerDbContextOptionsBuilder sqlServerOptions) =>
+        { sqlServerOptions.UseCompatibilityLevel(100); })); // need this or we get exceptions thrown because EF Core uses newer compatibility levels than the database
+
+
+builder.Services.AddDbContext<RequirementsDbContext>(options =>
+    options.UseSqlServer(
+        connectionStringRequirements,
+        (SqlServerDbContextOptionsBuilder sqlServerOptions) =>
+        { sqlServerOptions.UseCompatibilityLevel(100); }));
+
+// error handling problem details
+builder.Services.AddProblemDetails(options =>
+    options.CustomizeProblemDetails = ctx =>
+    {
+        ctx.ProblemDetails.Extensions.Add("instance", $"{ctx.HttpContext.Request.Method} {ctx.HttpContext.Request.Path}");
+    });
+builder.Services.AddExceptionHandler<ExceptionHandlerJsonProblem>();
+
+// cors allow
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy(name: origins,
+                      policy =>
+                      {
+                          //policy.WithOrigins("https://localhost:3245");
+                          policy.AllowAnyOrigin();
+                          policy.AllowAnyHeader();
+                      });
+});
+
+#region swagger
+
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.EnableAnnotations();
+    c.CustomOperationIds(apiDesc =>
+    {
+        // automatic operation id generation
+        return $"{apiDesc.ActionDescriptor.RouteValues["controller"]}_{apiDesc.ActionDescriptor.RouteValues["action"]}";
+    });
+
+    c.SwaggerDoc("TicketQueries",
+        new OpenApiInfo
+        {
+            Title = "Ticket Query API Endpoints",
+            Version = "0.0.1",
+
+            Description = "API for querying the current REMUS ticket database using an API key. Tickets are filtered by REMUS read/write permissions.",
+            Contact = new OpenApiContact { Name = "Al-Atari, Mareike", Email = "mareike.al-atari@helaba.de" },
+            TermsOfService = new Uri("http://www.helaba.de"),
+        }
+        );
+    c.SwaggerDoc("HealthChecks",
+         new OpenApiInfo
+         {
+             Title = "Health Check for API Endpoints",
+             Version = "0.0.1",
+
+             Description = "API for checking the health status of the requirements API server.",
+             Contact = new OpenApiContact { Name = "Al-Atari, Mareike", Email = "mareike.al-atari@helaba.de" },
+             TermsOfService = new Uri("http://www.helaba.de"),
+         }
+     );
+    c.UseOneOfForPolymorphism();
+
+    // Alle Server-URLs aus der Konfiguration hinzufügen
+    var serversSection = builder.Configuration.GetSection("Swagger:Servers").Get<Dictionary<string, string>>(); ;
+    // Einen Server mit Variablen (enum) hinzufügen
+
+    foreach (var server in serversSection)
+    {
+        c.AddServer(new OpenApiServer
+        {
+            Url = server.Value,
+            Description = $"{server.Key.ToUpper()}-Umgebung"
+        });
+    }
+    // add global tags
+    c.DocumentFilter<AddGlobalTagsFilter>();
+
+    c.OperationFilter<EnableQueryFilter>();
+    // add health check to documentation
+    c.DocumentFilter<HealthCheckFilterCustom>();
+    // security definitions
+    c.AddSecurityDefinition("ApiKey", new OpenApiSecurityScheme()
+    {
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Name = "x-helaba-api-key",
+        Description = "Application API Key",
+    });
+    c.AddSecurityDefinition("UserApiKey", new OpenApiSecurityScheme()
+    {
+        Type = SecuritySchemeType.ApiKey,
+        In = ParameterLocation.Header,
+        Name = "user-api-key",
+        Description = "User API Key",
+    });
+    c.AddSecurityRequirement(new OpenApiSecurityRequirement { {
+            new OpenApiSecurityScheme {
+             Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "ApiKey" },
+             Scheme = "apikey",
+            In = ParameterLocation.Header
+            },
+            Array.Empty<string>()
+            }
+    });
+
+    // requirements
+});
+//builder.Services.AddSwaggerGen();
+
+#endregion swagger
+
+#region health
+
+builder.Services.AddHealthChecks();
+builder.Services.ConfigureHealthChecks(builder.Configuration);
+
+//builder.Services.ConfigureHttpJsonOptions( options =>
+//{
+//    options.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+//    options.SerializerOptions.TypeInfoResolverChain.Insert(0, AppJsonSerializerContext.Default)
+//}
+//)
+
+var app = builder.Build();
+app.MapHealthChecks("/api/health", new HealthCheckOptions()
+{
+    Predicate = _ => true,
+    ResponseWriter = UIResponseWriter.WriteHealthCheckUIResponse
+});
+
+#endregion health
+
+//if(app.Environment.IsDevelopment())
+//{
+app.UseSwagger();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/TicketQueries/swagger.json", "Ticket Queries");
+    c.SwaggerEndpoint("/swagger/HealthChecks/swagger.json", "HealthChecks");
+    c.DefaultModelExpandDepth(2);
+});
+
+//}
+app.UseCors(origins);
+app.UseRouting();
+app.UseEndpoints(endpoints => endpoints.MapControllers());
+
+// error handling
+app.UseStatusCodePages();
+app.UseExceptionHandler();
+
+app.Run();

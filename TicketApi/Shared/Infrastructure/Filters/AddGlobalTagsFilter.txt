@@ -1,0 +1,27 @@
+﻿using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
+
+namespace TicketApi.Shared.Infrastructure.Filters
+{
+    public class AddGlobalTagsFilter : IDocumentFilter
+    {
+        public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
+        {
+            var allTags = swaggerDoc.Paths.Values
+                .SelectMany(path => path.Operations.Values)
+                .SelectMany(op => op.Tags ?? [])
+                .GroupBy(tag => tag.Name)
+                .Select(group => group.First())
+                .ToList();
+
+            // global tag set
+            var currentTags = swaggerDoc.Tags.Select(t => t.Name).ToHashSet();
+            swaggerDoc.Tags = allTags.Where(tag => !currentTags.Contains(tag.Name)).ToList();
+
+            //if(swaggerDoc.Paths.Keys.Any(path => path.Contains("health")))
+            //{
+            swaggerDoc.Tags.Add(new OpenApiTag { Name = "Health" });
+            //}
+        }
+    }
+}

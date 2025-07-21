@@ -1,0 +1,35 @@
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+using System.Runtime.Serialization;
+using System.Text.Json.Serialization;
+
+namespace TicketApi.Shared.Models;
+
+[Table("REMUS_USERBST")]
+public partial class User
+{
+    public int ExternKnz { get; set; }
+
+    [Key]
+    public string? UserId { get; set; }
+
+    public string? Name { get; set; }
+
+    public int? Personalnummer { get; set; }
+
+    public string? Email { get; set; }
+
+    public string? PersnrLft { get; set; }
+
+    public string? Doe { get; set; }
+
+    [JsonIgnore]
+    [NotMapped]
+    [IgnoreDataMember]
+    public List<string> DoePatternList { get; set; } = new List<string>();
+
+    [JsonIgnore]
+    [NotMapped]
+    [IgnoreDataMember]
+    public List<Berechtigung> UserPermissionList { get; set; } = new List<Berechtigung>();
+}

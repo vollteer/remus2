@@ -1,0 +1,24 @@
+﻿using Microsoft.OData.Edm.Validation;
+
+namespace TicketApi.Shared.Models.Entities
+{
+    public class ValidationResult
+    {
+        public bool IsValid { get; set; }
+        public List<ValidationError> Errors { get; set; } = new();
+        public List<ValidationError> Warnings { get; set; } = new();
+        public List<ValidationError> Suggestions { get; set; } = new();
+
+
+    }
+
+    public class ValidationError
+    {
+        public string Field { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+        public Severity Severity { get; set; } = Severity.Error;
+        public object? Value { get; set; } = string.Empty;
+
+    }
+}

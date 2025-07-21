@@ -1,0 +1,16 @@
+﻿using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
+
+namespace TicketApi.Shared.Infrastructure.Filters
+{
+    public class AdditionalInfosFilter
+    {
+        public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext cont)
+        {
+            swaggerDoc.ExternalDocs = new OpenApiExternalDocs
+            {
+                Description = "TBD"
+            };
+        }
+    }
+}
