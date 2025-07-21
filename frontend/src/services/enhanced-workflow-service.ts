@@ -67,7 +67,7 @@ name: string;
 description?: string;
 steps: WorkflowStep[];
 isActive: boolean;
-version: number;
+version: string;
 createdAt: string;
 modifiedAt: string;
 createdBy: string;
@@ -160,12 +160,12 @@ type: 'Kleinanforderung',
 name: 'Enhanced Kleinanforderung Workflow',
 description: 'Workflow mit Berechtigungen und Verzweigungen',
 isActive: true,
-version: 1,
+version: 'v0.0.1',
 createdAt: '2025-01-01T00:00:00Z',
 modifiedAt: '2025-01-01T00:00:00Z',
 createdBy: 'System',
 metadata: {
-version: '2.0',
+version: 'v2.0.0',
 createdBy: 'System',
 totalEstimatedDays: 11,
 supportsBranching: true,
@@ -353,12 +353,12 @@ type: 'Großanforderung',
 name: 'Enhanced Großanforderung Workflow',
 description: 'Komplexer Workflow mit parallelen Schritten',
 isActive: true,
-version: 1,
+version: 'v0.0.1',
 createdAt: '2025-01-01T00:00:00Z',
 modifiedAt: '2025-01-01T00:00:00Z',
 createdBy: 'System',
 metadata: {
-version: '2.0',
+version: 'v0.0.1',
 createdBy: 'System',
 totalEstimatedDays: 35,
 supportsBranching: true,
@@ -591,7 +591,7 @@ await delay(400);
 const savedConfig: WorkflowConfiguration = {
   ...config,
   modifiedAt: new Date().toISOString(),
-  version: config.version + 1,
+  version: config.version, // TODO
   metadata: {
     ...config.metadata,
     totalEstimatedDays: config.steps.reduce((sum, step) => sum + step.estimatedDays, 0)

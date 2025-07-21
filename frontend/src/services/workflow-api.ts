@@ -19,7 +19,7 @@ name: string;
 description?: string;
 steps: WorkflowStep[];
 isActive: boolean;
-version: number;
+version: string;
 createdAt?: string;
 modifiedAt?: string;
 createdBy?: string;
