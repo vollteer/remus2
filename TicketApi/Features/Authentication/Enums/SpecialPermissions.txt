@@ -1,0 +1,12 @@
+﻿namespace TicketApi.Features.Authentication.Enums
+{
+    /// <summary>
+    ///  hard-coded strings which are needed for the permission checks which have been copied from REMUS
+    /// </summary>
+    public enum SpecialPermissions
+    {
+        USER_DARF_DOE,
+        USER_DARF_VORHABEN,
+        USER_DARF_REAOBJ
+    }
+}

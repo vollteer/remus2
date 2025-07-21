@@ -1,0 +1,6 @@
+﻿namespace TicketApi.Features.TicketSearch.DTO
+{
+    public class CreateTicketRequest
+    {
+    }
+}

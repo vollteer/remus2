@@ -1,0 +1,23 @@
+﻿using Microsoft.Extensions.Diagnostics.HealthChecks;
+
+namespace TicketApi.Features.HealthCheck.Configuration
+{
+    /// <summary>
+    ///  Class containing health check configuration for REST API
+    /// </summary>
+    public static class HealthChecking
+    {
+        /// <summary>
+        /// Health check configuration containing a health check for the database. Response will contain "unhealthy" if unsuccessful and
+        /// healthy if successful.
+        /// </summary>
+        /// <param name="services">service collection for altering</param>
+        /// <param name="configuration">config containing db connection string</param>
+        public static void ConfigureHealthChecks(this IServiceCollection services, IConfiguration configuration)
+        {
+            _ = services.AddHealthChecks()
+                .AddSqlServer(configuration["ConnectionStrings:Remus"],
+                healthQuery: "select 1", name: "SQL Server", failureStatus: HealthStatus.Unhealthy, tags: ["Feedback", "Database"]);
+        }
+    }
+}

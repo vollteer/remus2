@@ -1,0 +1,175 @@
+﻿//using Microsoft.AspNetCore.Mvc;
+//using Microsoft.AspNetCore.Authorization;
+
+
+//namespace TicketApi.Features.Calendar.Controllers
+//{
+//    public class CalendarController : ControllerBase
+//    {
+//        private readonly ICalendarService _calendarService;
+//        private readonly ILogger<CalendarController> _logger;
+
+//        public CalendarController(ICalendarService calendarService, ILogger<CalendarController> logger)
+//        {
+//            _calendarService = calendarService;
+//            _logger = logger;
+//        }
+
+
+//        /// <summary>
+//        /// Get calendar events with filtering options
+//        /// </summary>
+//        [HttpGet("events")]
+//        public async Task<ActionResult<CalendarEventsResponse>> GetCalendarEvents([FromQuery] CalendarEventsRequest request)
+//        {
+//            try
+//            {
+//                var userId = GetCurrentUserId();
+//                var result = await _calendarService.GetCalendarEventsAsync(request, userId);
+
+//                if (!result.Success)
+//                {
+//                    return BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return Ok(result.Data);
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in GetCalendarEvents");
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+//        /// <summary>
+//        /// Get detailed information about a specific calendar event
+//        /// </summary>
+//        [HttpGet("events/{id}")]
+//        public async Task<ActionResult<CalendarEventDetailDto>> GetCalendarEvent(string id)
+//        {
+//            try
+//            {
+//                var userId = GetCurrentUserId();
+//                var result = await _calendarService.GetCalendarEventDetailAsync(id, userId);
+
+//                if (!result.Success)
+//                {
+//                    return result.ErrorMessage?.Contains("not found") == true
+//                        ? NotFound(new { error = result.ErrorMessage })
+//                        : BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return Ok(result.Data);
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in GetCalendarEvent for ID: {EventId}", id);
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+//        /// <summary>
+//        /// Update deadline for a requirement
+//        /// </summary>
+//        [HttpPatch("events/{requirementId}/deadline")]
+//        public async Task<ActionResult> UpdateDeadline(string requirementId, [FromBody] UpdateDeadlineRequest request)
+//        {
+//            try
+//            {
+//                var userId = GetCurrentUserId();
+//                var result = await _calendarService.UpdateDeadlineAsync(requirementId, request, userId);
+
+//                if (!result.Success)
+//                {
+//                    return result.ErrorMessage?.Contains("not found") == true
+//                        ? NotFound(new { error = result.ErrorMessage })
+//                        : BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return Ok(new { message = "Deadline updated successfully" });
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in UpdateDeadline for requirement: {RequirementId}", requirementId);
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+//        /// <summary>
+//        /// Get calendar statistics
+//        /// </summary>
+//        [HttpGet("statistics")]
+//        public async Task<ActionResult<CalendarStatistics>> GetCalendarStatistics([FromQuery] CalendarStatisticsRequest? request = null)
+//        {
+//            try
+//            {
+//                var userId = GetCurrentUserId();
+//                var result = await _calendarService.GetCalendarStatisticsAsync(request ?? new(), userId);
+
+//                if (!result.Success)
+//                {
+//                    return BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return Ok(result.Data);
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in GetCalendarStatistics");
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+//        /// <summary>
+//        /// Create a new calendar event (meeting, review, etc.)
+//        /// </summary>
+//        [HttpPost("events")]
+//        public async Task<ActionResult<CalendarEventDto>> CreateCalendarEvent([FromBody] CreateCalendarEventRequest request)
+//        {
+//            try
+//            {
+//                var userId = GetCurrentUserId();
+//                var result = await _calendarService.CreateCalendarEventAsync(request, userId);
+
+//                if (!result.Success)
+//                {
+//                    return BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return CreatedAtAction(nameof(GetCalendarEvent), new { id = result.Data?.Id }, result.Data);
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in CreateCalendarEvent");
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+//        /// <summary>
+//        /// Get upcoming deadlines for current user
+//        /// </summary>
+//        [HttpGet("my-deadlines")]
+//        public async Task<ActionResult<List<CalendarEventDto>>> GetMyUpcomingDeadlines([FromQuery] int? days = 7)
+//        {
+//            try
+//            {
+//                var userId = HttpContext.Items["UserId"].ToString();
+//                var result = await _calendarService.GetUserUpcomingDeadlinesAsync(userId, days ?? 7);
+
+//                if (!result.Success)
+//                {
+//                    return BadRequest(new { error = result.ErrorMessage });
+//                }
+
+//                return Ok(result.Data);
+//            }
+//            catch (Exception ex)
+//            {
+//                _logger.LogError(ex, "Error in GetMyUpcomingDeadlines");
+//                return StatusCode(500, new { error = "Internal server error" });
+//            }
+//        }
+
+
+//    }
+//}

@@ -1,0 +1,49 @@
+﻿using System.ComponentModel.DataAnnotations;
+
+namespace TicketApi.Features.Calendar.DTO
+{
+    public class CalendarStatisticsRequest
+    {
+        public DateTime? StartDate { get; set; }
+        public DateTime? EndDate { get; set; }
+        public List<string>? RequirementTypes { get; set; }
+    }
+    public class CreateCalendarEventRequest
+    {
+        [Required]
+        public string Title { get; set; } = string.Empty;
+
+        [Required]
+        public DateTime Date { get; set; }
+
+        public string? Time { get; set; }
+
+        [Required]
+        public string Type { get; set; } = string.Empty; // meeting, review, etc.
+
+        public string? Description { get; set; }
+
+        public string? RequirementId { get; set; }
+
+        public List<string>? Attendees { get; set; }
+    }
+
+    // Generic Service Result wrapper
+    public class ServiceResult<T>
+    {
+        public bool Successful { get; private set; }
+        public T? Data { get; private set; }
+        public string? ErrorMessage { get; private set; }
+
+        private ServiceResult(bool success, T? data, string? errorMessage)
+        {
+            Successful = success;
+            Data = data;
+            ErrorMessage = errorMessage;
+        }
+
+        public static ServiceResult<T> Success(T data) => new(true, data, null);
+        public static ServiceResult<T> Failure(string errorMessage) => new(false, default, errorMessage);
+    }
+
+}

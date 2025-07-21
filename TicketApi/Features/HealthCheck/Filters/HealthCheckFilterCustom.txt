@@ -1,0 +1,69 @@
+﻿using Microsoft.OpenApi.Models;
+using Swashbuckle.AspNetCore.SwaggerGen;
+
+namespace TicketApi.Features.HealthCheck.Filters
+{
+    public class HealthCheckFilterCustom : IDocumentFilter
+    {
+        public void Apply(OpenApiDocument swaggerDoc, DocumentFilterContext context)
+        {
+            // Füge den /api/health-Endpunkt zu Swagger hinzu
+
+            swaggerDoc.Paths["/api/health"] = new OpenApiPathItem
+            {
+                Operations =
+            {
+                [OperationType.Get] = new OpenApiOperation
+                {
+                    Tags= [new OpenApiTag { Name = "Health" }],
+                    //Summary = "Health Check",
+                    Description = "check for health status of application.",
+                    OperationId = "Health_Get",
+                    Responses = new OpenApiResponses
+                    {
+                        ["200"] = new OpenApiResponse
+                        {
+                            Description = "The application is healthy.",
+                            Content = new Dictionary<string, OpenApiMediaType>
+                            {
+                                ["application/json"] = new OpenApiMediaType
+                                {
+                                    Schema = new OpenApiSchema
+                                    {
+                                        Type = "object",
+                                        Properties = new Dictionary<string, OpenApiSchema>
+                                        {
+                                            ["status"] = new OpenApiSchema { Type = "string", Example = new Microsoft.OpenApi.Any.OpenApiString("Healthy") },
+                                            ["details"] = new OpenApiSchema { Type = "object", AdditionalPropertiesAllowed = true },
+                                            ["timestamp"] = new OpenApiSchema { Type = "string", Format = "date-time" }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                        ["503"] = new OpenApiResponse
+                        {
+                            Description = "The application is unhealthy.",
+                            Content = new Dictionary<string, OpenApiMediaType>
+                            {
+                                ["application/json"] = new OpenApiMediaType
+                                {
+                                    Schema = new OpenApiSchema
+                                    {
+                                        Type = "object",
+                                        Properties = new Dictionary<string, OpenApiSchema>
+                                        {
+                                            ["status"] = new OpenApiSchema { Type = "string", Example = new Microsoft.OpenApi.Any.OpenApiString("Unhealthy") },
+                                            ["error"] = new OpenApiSchema { Type = "string", Example = new Microsoft.OpenApi.Any.OpenApiString("Database unavailable") }
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    }
+                }
+            }
+            };
+        }
+    }
+}
