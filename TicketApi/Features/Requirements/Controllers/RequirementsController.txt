@@ -1,0 +1,58 @@
+﻿using Microsoft.AspNetCore.Mvc;
+using TicketApi.Features.Requirements.DTO;
+using TicketApi.Features.Requirements.Services;
+
+namespace TicketApi.Features.Requirements.Controllers
+{
+    [ApiController]
+    [Route("api/[controller]")]
+    public class RequirementsController : ControllerBase
+    {
+        private readonly IRequirementsService _service;
+
+        [HttpPost]
+        public async Task<ActionResult<RequirementDto>> CreateRequirement([FromBody] CreateRequirementRequest request)
+        {
+            var result = await _service.CreateRequirementAsync(request);
+            return CreatedAtAction(nameof(GetRequirement), new { id = result.Id }, result);
+        }
+
+        [HttpGet("{id:guid}")]
+        public async Task<ActionResult<RequirementDto>> GetRequirement(Guid id)
+        {
+            var result = await _service.GetRequirementByIdAsync(id);
+            if (result == null)
+                return NotFound($"Requirement with ID {id} not found");
+            return Ok(result);
+        }
+
+        [HttpGet]
+        public async Task<ActionResult<List<RequirementDto>>> GetRequirements(
+            [FromQuery] string? type = null,
+            [FromQuery] string? status = null,
+            [FromQuery] string? priority = null,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 20)
+        {
+            var result = await _service.GetRequirementsAsync(type, status, priority, page, pageSize);
+            return Ok(result);
+        }
+
+        [HttpPut("{id:guid}")]
+        public async Task<ActionResult<RequirementDto>> UpdateRequirement(Guid id, [FromBody] UpdateRequirementRequest request)
+        {
+            var result = await _service.UpdateRequirementAsync(id, request);
+            if (result == null)
+                return NotFound($"Requirement with ID {id} not found");
+            return Ok(result);
+        }
+
+        [HttpDelete("{id:guid}")]
+        public async Task<ActionResult> DeleteRequirement(Guid id)
+        {
+            var success = await _service.DeleteRequirementAsync(id);
+            if (!success)
+                return NotFound($"Requirement with ID {id} not found");
+            return NoContent();
+
+        }

@@ -8,7 +8,7 @@
     namespace RequirementsApi.Controllers
     {
         [ApiController]
-        //[Route(“api / [controller]”)]
+        [Route("api/[controller]")]
         public class WorkflowController : ControllerBase
         {
             private readonly IWorkflowService _workflowService;

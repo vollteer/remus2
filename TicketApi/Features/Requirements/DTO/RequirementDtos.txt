@@ -1,0 +1,477 @@
+﻿// ============================================================================
+// DTOs/RequirementDtos.cs
+// ============================================================================
+using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
+
+namespace TicketApi.Features.Requirements.DTO
+{
+    public class RequirementDto
+    {
+        public Guid Id { get; set; }
+        public string RequirementNumber { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string? Description { get; set; } // ← Du hast Description!
+        public string RequirementType { get; set; } = string.Empty;
+        public string Priority { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+
+        // Business Data
+        public string RequestedBy { get; set; } = string.Empty;
+        public string? BusinessOwner { get; set; } 
+        public string? TechnicalOwner { get; set; } 
+        public string? Department { get; set; } 
+        public string? CostCenter { get; set; } 
+
+        // Financial (erweitert für deine 3 Budget-Felder)
+        public decimal? EstimatedCost { get; set; } 
+        public decimal? ApprovedBudget { get; set; } 
+        public decimal? ActualCost { get; set; } 
+        public string Currency { get; set; } = "EUR";
+
+        // Dates (angepasst an deine Naming)
+        public DateTime RequestedDate { get; set; } // ← Dein Feld!
+        public DateTime? RequiredByDate { get; set; } // ← Dein Feld statt RequestedDueDate!
+        public DateTime? StartDate { get; set; } // ← Fehlte!
+        public DateTime? CompletedDate { get; set; } // ← Fehlte!
+
+        // Workflow State (aus deiner DB)
+        public Guid? CurrentWorkflowConfigId { get; set; } // ← Fehlte!
+        public string? CurrentWorkflowStep { get; set; } // ← Fehlte!
+        public Guid? WorkflowInstanceId { get; set; } // ← Fehlte!
+
+        // Form Data (aus deiner DB)
+        public string? FormData { get; set; } // JSON string
+        public Guid? FormConfigurationId { get; set; } // ← Fehlte!
+
+        // Compliance & Security (aus deiner DB - fehlten komplett!)
+        public bool HasPersonalData { get; set; } = false;
+        public string SecurityClassification { get; set; } = "Internal";
+        public string? ComplianceFlags { get; set; } // JSON
+
+        // Timestamps
+        public DateTime CreatedAt { get; set; }
+        public DateTime? ModifiedAt { get; set; }
+        public string CreatedBy { get; set; } = string.Empty;
+        public string? ModifiedBy { get; set; }
+
+        // Related entities (optional für erweiterte Responses)
+        public WorkflowInstanceDto? WorkflowInstance { get; set; }
+        public List<AttachmentDto> Attachments { get; set; } = new();
+        public List<RequirementHistoryDto> History { get; set; } = new();
+    }
+
+    // Create Request DTO - ANGEPASST AN DEINE DB-FELDER!
+    public class CreateRequirementRequest
+    {
+        [Required]
+        [StringLength(255)]
+        public string Title { get; set; } = string.Empty;
+
+        [StringLength(2000)]
+        public string? Description { get; set; } // ← Du hast Description!
+
+        [Required]
+        [StringLength(100)]
+        public string RequirementType { get; set; } = string.Empty;
+
+        [Required]
+        [StringLength(50)]
+        public string Priority { get; set; } = string.Empty;
+
+        // Business Data 
+        [Required]
+        [StringLength(255)]
+        public string RequestedBy { get; set; } = string.Empty; // ← User wird automatisch gesetzt
+
+        [StringLength(255)]
+        public string? BusinessOwner { get; set; } 
+
+        [StringLength(255)]
+        public string? TechnicalOwner { get; set; } 
+
+        [StringLength(100)]
+        public string? Department { get; set; } 
+
+        [StringLength(50)]
+        public string? CostCenter { get; set; } 
+
+        // Financial (erweitert)
+        [Range(0, 999999999)]
+        public decimal? EstimatedCost { get; set; } 
+
+        [Range(0, 999999999)]
+        public decimal? ApprovedBudget { get; set; } 
+
+        [StringLength(3)]
+        public string Currency { get; set; } = "EUR"; 
+
+        public DateTime? RequiredByDate { get; set; } 
+        public DateTime? StartDate { get; set; }
+
+        // Workflow State (optional beim Create)
+        public Guid? FormConfigurationId { get; set; } 
+
+        // Compliance & Security
+        public bool HasPersonalData { get; set; } = false;
+
+        [StringLength(50)]
+        public string SecurityClassification { get; set; } = "Internal";
+
+        public string? ComplianceFlags { get; set; } // JSON
+
+        // Form data (JSON)
+        public string? FormData { get; set; }
+    }
+
+    // Update Request DTO
+    public class UpdateRequirementRequest
+    {
+        [StringLength(200)]
+        public string? Title { get; set; }
+        [StringLength(2000)]
+        public string? Description { get; set; }
+        public string? ComplianceFlags { get; set; }
+        [Range(0, 999999999)]
+        public decimal? EstimatedCost { get; set; }
+        public DateTime? RequiredByDate { get; set; }
+        public DateTime? StartDate { get; set; }
+        public bool HasPersonalData { get; set; } = false;
+        public string SecurityClassification { get; set; } = "Internal";
+        [StringLength(50)]
+        public string? CostCenter { get; set; }
+        [Range(0, 999999999)]
+        public decimal? ApprovedBudget { get; set; }
+
+        [StringLength(100)]
+        public string? Department { get; set; }
+        [StringLength(255)]
+        public string? TechnicalOwner { get; set; }
+
+        [StringLength(50)]
+        public string? RequirementType { get; set; }
+
+        [StringLength(50)]
+        public string? RealizationObject { get; set; }
+
+        [StringLength(20)]
+        public string? Priority { get; set; }
+
+        [StringLength(20)]
+        public string? Status { get; set; }
+
+        [StringLength(2000)]
+        public string? InitialSituation { get; set; }
+
+        [StringLength(2000)]
+        public string? Goals { get; set; }
+
+        [StringLength(2000)]
+        public string? TargetSituation { get; set; }
+
+        [StringLength(1000)]
+        public string? Benefits { get; set; }
+
+        [Range(0, 999999999)]
+        public decimal? EstimatedBudget { get; set; }
+
+        public DateTime? RequestedDueDate { get; set; }
+        public DateTime? ActualDueDate { get; set; }
+
+        public Guid? FunctionalContactId { get; set; }
+        public Guid? SystemResponsibleId { get; set; }
+        public Guid? BusinessOwnerId { get; set; }
+
+        [StringLength(5000)]
+        public string? Comments { get; set; }
+
+        public string? FormData { get; set; }
+        [StringLength(255)]
+        public string? BusinessOwner { get; set; }
+    }
+
+    // Person DTO for contacts/responsible persons
+    public class PersonDto
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string Department { get; set; } = string.Empty;
+        public string? Phone { get; set; }
+        public string? Role { get; set; }
+        public bool IsActive { get; set; }
+    }
+
+    // Workflow Instance DTO
+    public class WorkflowInstanceDto
+    {
+        public Guid Id { get; set; }
+        public string WorkflowType { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string CurrentStepId { get; set; } = string.Empty;
+        public string CurrentStepTitle { get; set; } = string.Empty;
+        public string CurrentStepResponsible { get; set; } = string.Empty;
+        public PersonDto? CurrentAssignee { get; set; }
+        public DateTime CreatedAt { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public int EstimatedDaysRemaining { get; set; }
+        public List<WorkflowStepInstanceDto> Steps { get; set; } = new();
+    }
+
+    // Workflow Step Instance DTO
+    public class WorkflowStepInstanceDto
+    {
+        public Guid Id { get; set; }
+        public string StepId { get; set; } = string.Empty;
+        public string Title { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string Responsible { get; set; } = string.Empty;
+        public PersonDto? Assignee { get; set; }
+        public DateTime? StartedAt { get; set; }
+        public DateTime? CompletedAt { get; set; }
+        public DateTime? DueDate { get; set; }
+        public int EstimatedDays { get; set; }
+        public int Order { get; set; }
+        public string? Comments { get; set; }
+        public string? Decision { get; set; } // For approval steps
+    }
+
+    // Attachment DTO
+    public class AttachmentDto
+    {
+        public Guid Id { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string OriginalFileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty;
+        public long FileSize { get; set; }
+        public string UploadedBy { get; set; } = string.Empty;
+        public DateTime UploadedAt { get; set; }
+        public string? Description { get; set; }
+        public string DownloadUrl { get; set; } = string.Empty;
+    }
+
+    // History/Audit DTO
+    public class RequirementHistoryDto
+    {
+        public Guid Id { get; set; }
+        public string Action { get; set; } = string.Empty; // Created, Updated, StatusChanged, etc.
+        public string? FieldName { get; set; }
+        public string? OldValue { get; set; }
+        public string? NewValue { get; set; }
+        public string ChangedBy { get; set; } = string.Empty;
+        public DateTime ChangedAt { get; set; }
+        public string? Comments { get; set; }
+    }
+
+    // Query/Filter DTOs
+    public class RequirementQueryRequest
+    {
+        public string? Type { get; set; }
+        public string? Status { get; set; }
+        public string? Priority { get; set; }
+        public string? CreatedBy { get; set; }
+        public Guid? FunctionalContactId { get; set; }
+        public Guid? SystemResponsibleId { get; set; }
+        public DateTime? CreatedFrom { get; set; }
+        public DateTime? CreatedTo { get; set; }
+        public DateTime? DueFrom { get; set; }
+        public DateTime? DueTo { get; set; }
+        public string? SearchText { get; set; }
+
+        // Pagination
+        public int Page { get; set; } = 1;
+        public int PageSize { get; set; } = 20;
+
+        // Sorting
+        public string? SortBy { get; set; } = "CreatedAt";
+        public string? SortDirection { get; set; } = "desc";
+    }
+
+    public class PagedResultDto<T>
+    {
+        public List<T> Items { get; set; } = new();
+        public int TotalCount { get; set; }
+        public int PageNumber { get; set; }
+        public int PageSize { get; set; }
+        public int TotalPages => (int)Math.Ceiling((double)TotalCount / PageSize);
+        public bool HasPreviousPage => PageNumber > 1;
+        public bool HasNextPage => PageNumber < TotalPages;
+    }
+
+    // Statistics DTO
+    public class RequirementStatisticsDto
+    {
+        public int TotalRequirements { get; set; }
+        public Dictionary<string, int> ByType { get; set; } = new();
+        public Dictionary<string, int> ByStatus { get; set; } = new();
+        public Dictionary<string, int> ByPriority { get; set; } = new();
+        public Dictionary<string, int> ByCreatedMonth { get; set; } = new();
+        public decimal TotalEstimatedBudget { get; set; }
+        public int OverdueCount { get; set; }
+        public int InProgressCount { get; set; }
+        public int CompletedThisMonth { get; set; }
+        public double AverageCompletionDays { get; set; }
+    }
+
+    // Validation Result DTO
+    public class RequirementValidationResultDto
+    {
+        public bool IsValid { get; set; }
+        public List<ValidationErrorDto> Errors { get; set; } = new();
+        public List<ValidationWarningDto> Warnings { get; set; } = new();
+    }
+
+    public class ValidationErrorDto
+    {
+        public string Field { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+    }
+
+    public class ValidationWarningDto
+    {
+        public string Field { get; set; } = string.Empty;
+        public string Message { get; set; } = string.Empty;
+        public string Code { get; set; } = string.Empty;
+    }
+
+    // Bulk Operations DTOs
+    public class BulkUpdateRequirementsRequest
+    {
+        public List<Guid> RequirementIds { get; set; } = new();
+        public string? Status { get; set; }
+        public string? Priority { get; set; }
+        public Guid? AssignToFunctionalContact { get; set; }
+        public Guid? AssignToSystemResponsible { get; set; }
+        public DateTime? SetDueDate { get; set; }
+        public string? AddComment { get; set; }
+    }
+
+    public class BulkOperationResultDto
+    {
+        public int SuccessCount { get; set; }
+        public int FailureCount { get; set; }
+        public List<BulkOperationErrorDto> Errors { get; set; } = new();
+    }
+
+    public class BulkOperationErrorDto
+    {
+        public Guid RequirementId { get; set; }
+        public string RequirementNumber { get; set; } = string.Empty;
+        public string Error { get; set; } = string.Empty;
+    }
+
+    // Import/Export DTOs
+    public class RequirementExportRequest
+    {
+        public List<Guid>? RequirementIds { get; set; } // If null, export all
+        public RequirementQueryRequest? Filters { get; set; }
+        public string Format { get; set; } = "xlsx"; // xlsx, csv, json
+        public List<string>? Fields { get; set; } // If null, export all
+        public bool IncludeHistory { get; set; } = false;
+        public bool IncludeAttachments { get; set; } = false;
+    }
+
+    public class RequirementImportRequest
+    {
+        public string FileName { get; set; } = string.Empty;
+        public string ContentType { get; set; } = string.Empty;
+        public byte[] FileContent { get; set; } = Array.Empty<byte>();
+        public bool ValidateOnly { get; set; } = false;
+        public bool UpdateExisting { get; set; } = false;
+        public string ImportMode { get; set; } = "create"; // create, update, upsert
+    }
+
+    public class RequirementImportResultDto
+    {
+        public int TotalRows { get; set; }
+        public int SuccessCount { get; set; }
+        public int SkippedCount { get; set; }
+        public int ErrorCount { get; set; }
+        public List<RequirementImportErrorDto> Errors { get; set; } = new();
+        public List<RequirementDto> ImportedRequirements { get; set; } = new();
+    }
+
+    public class RequirementImportErrorDto
+    {
+        public int RowNumber { get; set; }
+        public string Field { get; set; } = string.Empty;
+        public string Error { get; set; } = string.Empty;
+        public string? Value { get; set; }
+    }
+
+    // Constants für deine DB-Struktur
+    public static class RequirementConstants
+    {
+        public static class Types
+        {
+            public const string Kleinanforderung = "Kleinanforderung";
+            public const string Grossanforderung = "Großanforderung";
+            public const string TiaAnforderung = "TIA-Anforderung";
+            public const string Supportleistung = "Supportleistung";
+            public const string Betriebsauftrag = "Betriebsauftrag";
+            public const string SbbiLoesung = "SBBI-Lösung";
+            public const string AwgRelease = "AWG-Release";
+            public const string AwsRelease = "AWS-Release";
+        }
+
+        // Angepasst an deine DB-Werte
+        public static class Priorities
+        {
+            public const string Low = "Low";
+            public const string Medium = "Medium"; // ← Dein Default
+            public const string High = "High";
+            public const string Urgent = "Urgent"; // ← Du hast Urgent statt Critical
+        }
+
+        public static class Statuses
+        {
+            public const string Draft = "Draft"; // ← Dein Default
+            public const string Submitted = "Submitted";
+            public const string InProgress = "InProgress";
+            public const string Completed = "Completed";
+            public const string Rejected = "Rejected";
+            public const string OnHold = "OnHold";
+        }
+
+        // Security Classifications (aus deiner DB)
+        public static class SecurityClassifications
+        {
+            public const string Public = "Public";
+            public const string Internal = "Internal"; // ← Dein Default
+            public const string Confidential = "Confidential";
+            public const string Secret = "Secret";
+        }
+
+        // Currencies
+        public static class Currencies
+        {
+            public const string EUR = "EUR"; // ← Dein Default
+            public const string USD = "USD";
+            public const string CHF = "CHF";
+        }
+
+        public static class WorkflowStepStatuses
+        {
+            public const string Pending = "pending";
+            public const string InProgress = "in_progress";
+            public const string Completed = "completed";
+            public const string Skipped = "skipped";
+            public const string Failed = "failed";
+        }
+
+        public static class ValidationCodes
+        {
+            public const string Required = "REQUIRED";
+            public const string InvalidFormat = "INVALID_FORMAT";
+            public const string TooLong = "TOO_LONG";
+            public const string TooShort = "TOO_SHORT";
+            public const string InvalidRange = "INVALID_RANGE";
+            public const string NotFound = "NOT_FOUND";
+            public const string Duplicate = "DUPLICATE";
+            public const string BusinessRuleViolation = "BUSINESS_RULE_VIOLATION";
+        }
+    }
+}

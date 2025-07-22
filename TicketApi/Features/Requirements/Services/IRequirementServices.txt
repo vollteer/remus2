@@ -1,0 +1,43 @@
+﻿
+using TicketApi.Features.Requirements.DTO;
+
+namespace TicketApi.Features.Requirements.Services
+{
+    public interface IRequirementsService
+    {
+        // CRUD Operations
+        Task<RequirementDto> CreateRequirementAsync(CreateRequirementRequest request);
+        Task<RequirementDto?> GetRequirementByIdAsync(Guid id);
+        Task<RequirementDto?> GetRequirementByNumberAsync(string requirementNumber);
+        Task<PagedResultDto<RequirementDto>> GetRequirementsAsync(RequirementQueryRequest query);
+        Task<RequirementDto?> UpdateRequirementAsync(Guid id, UpdateRequirementRequest request);
+        Task<bool> DeleteRequirementAsync(Guid id);
+
+        // Status Operations
+        Task<RequirementDto?> UpdateStatusAsync(Guid id, string status, string? comments = null);
+        Task<RequirementDto?> SubmitRequirementAsync(Guid id);
+        Task<RequirementDto?> ApproveRequirementAsync(Guid id, string? comments = null);
+        Task<RequirementDto?> RejectRequirementAsync(Guid id, string reason);
+
+        // Workflow Operations
+        Task<RequirementDto?> StartWorkflowAsync(Guid id, Guid workflowConfigId);
+        Task<RequirementDto?> AdvanceWorkflowStepAsync(Guid id, string stepId, string? decision = null);
+        Task<RequirementDto?> AssignWorkflowStepAsync(Guid id, string stepId, string assigneeId);
+
+        // Bulk Operations
+        Task<BulkOperationResultDto> BulkUpdateAsync(BulkUpdateRequirementsRequest request);
+        Task<BulkOperationResultDto> BulkDeleteAsync(List<Guid> requirementIds);
+
+        // Statistics & Reports
+        Task<RequirementStatisticsDto> GetStatisticsAsync(DateTime? fromDate = null, DateTime? toDate = null);
+        Task<List<RequirementDto>> GetMyRequirementsAsync(string userId, string? status = null);
+        Task<List<RequirementDto>> GetOverdueRequirementsAsync();
+
+        // Validation
+        Task<RequirementValidationResultDto> ValidateRequirementAsync(CreateRequirementRequest request);
+        Task<RequirementValidationResultDto> ValidateUpdateAsync(Guid id, UpdateRequirementRequest request);
+
+        // Number Generation
+        Task<string> GenerateRequirementNumberAsync(string requirementType);
+    }
+}
