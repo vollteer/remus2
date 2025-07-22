@@ -1,7 +1,9 @@
 // src/components/administration/workflow-designer.tsx
-import { component$, useSignal, useTask$, $, useStore } from '@builder.io/qwik';
 
-// Types (nutze deine bestehenden Types)
+import { component$, useSignal, useTask$, $ } from '@builder.io/qwik';
+import { WorkflowApiService } from '~/services/api/workflow-api-service';
+
+// Types (deine bestehenden Types)
 interface WorkflowStep {
   id: string;
   title: string;
@@ -85,15 +87,36 @@ export const WorkflowDesigner = component$(() => {
   const isLoading = useSignal(false);
   const isSaving = useSignal(false);
   const activeTab = useSignal<'designer' | 'properties' | 'preview' | 'export'>('designer');
-  
+
   // Drag & Drop state
   const draggedStep = useSignal<number | null>(null);
   const dragOverIndex = useSignal<number | null>(null);
 
+  // 🎯 TOAST STATE (KORRIGIERT)
+  const toastMessage = useSignal<string>('');
+  const toastType = useSignal<'success' | 'error' | 'info' | 'warning'>('info');
+  const showToast = useSignal(false);
+
+  // 🔧 TOAST FUNCTIONS (SYNTAX FEHLER BEHOBEN)
+  const showToastMessage = $((message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    toastMessage.value = message;
+    toastType.value = type;
+    showToast.value = true;
+    
+    // Auto-hide nach 4 Sekunden
+    setTimeout(() => {
+      showToast.value = false;
+    }, 4000);
+  });
+
+  const hideToast = $(() => {
+    showToast.value = false;
+  });
+
   // Workflow Types
   const workflowTypes = [
-    'Kleinanforderung', 'Großanforderung', 'TIA-Anforderung', 
-    'Supportleistung', 'Betriebsauftrag', 'SBBI-Lösung', 
+    'Kleinanforderung', 'Großanforderung', 'TIA-Anforderung',
+    'Supportleistung', 'Betriebsauftrag', 'SBBI-Lösung',
     'AWG-Release', 'AWS-Release'
   ];
 
@@ -175,16 +198,35 @@ export const WorkflowDesigner = component$(() => {
     }
   ];
 
-  // Mock API service calls (ersetze durch deine echten Services)
+  // 🚀 API CALLS MIT TOAST (ALLE ALERTS ERSETZT)
   const loadWorkflow = $(async (workflowType: string) => {
     isLoading.value = true;
     try {
-      // Simulate API call - ersetze durch MockWorkflowService.getWorkflowConfiguration(workflowType)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      console.log(`Loading workflow: ${workflowType}`);
       
-      // Mock data - ersetze durch echte API Antwort
-      const mockConfig: WorkflowConfiguration = {
-        id: `workflow-${workflowType.toLowerCase()}`,
+      const config = await WorkflowApiService.getWorkflowByType(workflowType);
+      
+      if (config) {
+        console.log('Loaded existing workflow:', config);
+        currentConfig.value = config;
+        workflowSteps.value = [...config.steps];
+        showToastMessage(`Workflow "${workflowType}" geladen`, 'success');
+      } else {
+        console.log('No workflow found, creating empty one');
+        const newConfig = await WorkflowApiService.createEmptyWorkflow(workflowType);
+        currentConfig.value = newConfig;
+        workflowSteps.value = [];
+        showToastMessage(`Neuer Workflow "${workflowType}" erstellt`, 'info');
+      }
+      
+      selectedStep.value = null;
+    } catch (error) {
+      console.error('Error loading workflow:', error);
+      showToastMessage(`Fehler beim Laden: ${error.message}`, 'error');
+      
+      // Fallback: Leerer Mock-Workflow
+      const fallbackConfig: WorkflowConfiguration = {
+        id: `fallback-${workflowType.toLowerCase()}`,
         type: workflowType,
         name: `Workflow für ${workflowType}`,
         description: `Standard-Workflow für ${workflowType}`,
@@ -193,15 +235,10 @@ export const WorkflowDesigner = component$(() => {
         version: 1,
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
-        createdBy: 'system'
+        createdBy: 'abc'
       };
-      
-      currentConfig.value = mockConfig;
-      workflowSteps.value = [...mockConfig.steps];
-      selectedStep.value = null;
-    } catch (error) {
-      console.error('Error loading workflow:', error);
-      alert('Fehler beim Laden des Workflows');
+      currentConfig.value = fallbackConfig;
+      workflowSteps.value = [];
     } finally {
       isLoading.value = false;
     }
@@ -257,7 +294,7 @@ export const WorkflowDesigner = component$(() => {
     dragOverIndex.value = null;
   });
 
-  // Step management
+  // Step management (MIT TOAST)
   const addNewStep = $((template: StepTemplate) => {
     const newStep: WorkflowStep = {
       id: `step-${Date.now()}`,
@@ -282,6 +319,8 @@ export const WorkflowDesigner = component$(() => {
 
     workflowSteps.value = [...workflowSteps.value, newStep];
     selectedStep.value = newStep;
+    
+    showToastMessage(`Schritt "${template.title}" hinzugefügt`, 'info');
   });
 
   const updateStep = $((stepId: string, updates: Partial<WorkflowStep>) => {
@@ -295,7 +334,10 @@ export const WorkflowDesigner = component$(() => {
   });
 
   const deleteStep = $((stepId: string) => {
+    const stepToDelete = workflowSteps.value.find(s => s.id === stepId);
+    
     workflowSteps.value = workflowSteps.value.filter(step => step.id !== stepId);
+    
     // Reorder remaining steps
     workflowSteps.value.forEach((step, index) => {
       step.order = index + 1;
@@ -303,6 +345,10 @@ export const WorkflowDesigner = component$(() => {
 
     if (selectedStep.value?.id === stepId) {
       selectedStep.value = null;
+    }
+    
+    if (stepToDelete) {
+      showToastMessage(`Schritt "${stepToDelete.title}" gelöscht`, 'info');
     }
   });
 
@@ -313,11 +359,14 @@ export const WorkflowDesigner = component$(() => {
       title: `${step.title} (Kopie)`,
       order: workflowSteps.value.length + 1
     };
+    
     workflowSteps.value = [...workflowSteps.value, stepCopy];
     selectedStep.value = stepCopy;
+    
+    showToastMessage(`Schritt "${step.title}" dupliziert`, 'info');
   });
 
-  // Workflow actions
+  // Workflow actions (MIT TOAST)
   const saveWorkflow = $(async () => {
     if (!currentConfig.value) return;
 
@@ -328,15 +377,17 @@ export const WorkflowDesigner = component$(() => {
         steps: workflowSteps.value,
         modifiedAt: new Date().toISOString()
       };
+
+      console.log('Saving workflow:', configToSave);
+      const savedConfig = await WorkflowApiService.saveWorkflowConfiguration(configToSave);
       
-      // Simulate API call - ersetze durch MockWorkflowService.saveWorkflowConfiguration(configToSave)
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      currentConfig.value = savedConfig;
+      console.log('Workflow saved successfully:', savedConfig);
       
-      currentConfig.value = configToSave;
-      alert(`Workflow "${selectedWorkflowType.value}" erfolgreich gespeichert! 🎉`);
+      showToastMessage(`Workflow "${selectedWorkflowType.value}" erfolgreich gespeichert! 🎉`, 'success');
     } catch (error) {
       console.error("Error saving workflow:", error);
-      alert("Fehler beim Speichern des Workflows");
+      showToastMessage(`Fehler beim Speichern: ${error.message}`, 'error');
     } finally {
       isSaving.value = false;
     }
@@ -346,43 +397,32 @@ export const WorkflowDesigner = component$(() => {
     if (!currentConfig.value) return;
 
     try {
-      // Simulate validation - ersetze durch MockWorkflowService.validateWorkflow
-      await new Promise(resolve => setTimeout(resolve, 500));
+      const configToValidate: WorkflowConfiguration = {
+        ...currentConfig.value,
+        steps: workflowSteps.value
+      };
       
-      const errors: string[] = [];
+      console.log('Validating workflow:', configToValidate);
+      const validation = await WorkflowApiService.validateWorkflow(configToValidate);
       
-      // Basic validation
-      if (workflowSteps.value.length === 0) {
-        errors.push("Workflow muss mindestens einen Schritt haben");
-      }
-      
-      // Check for duplicate step IDs
-      const stepIds = workflowSteps.value.map(s => s.id);
-      if (new Set(stepIds).size !== stepIds.length) {
-        errors.push("Doppelte Schritt-IDs gefunden");
-      }
-
-      // Check required fields
-      workflowSteps.value.forEach((step, index) => {
-        if (!step.title.trim()) {
-          errors.push(`Schritt ${index + 1}: Titel ist erforderlich`);
-        }
-        if (!step.description.trim()) {
-          errors.push(`Schritt ${index + 1}: Beschreibung ist erforderlich`);
-        }
-        if (step.estimatedDays <= 0) {
-          errors.push(`Schritt ${index + 1}: Geschätzte Tage muss größer als 0 sein`);
-        }
-      });
-      
-      if (errors.length === 0) {
-        alert("✅ Workflow ist valid!");
+      if (validation.isValid) {
+        showToastMessage("✅ Workflow ist valid!", 'success');
       } else {
-        alert(`❌ Workflow Validierungsfehler:\n\n${errors.join("\n")}`);
+        const errorCount = validation.errors?.length || 0;
+        const warningCount = validation.warnings?.length || 0;
+        
+        showToastMessage(
+          `❌ Validierung fehlgeschlagen: ${errorCount} Fehler, ${warningCount} Warnungen`, 
+          'error'
+        );
+        
+        // Detaillierte Fehler in Console
+        console.log('Validation errors:', validation.errors);
+        console.log('Validation warnings:', validation.warnings);
       }
     } catch (error) {
       console.error("Error validating workflow:", error);
-      alert("Fehler bei der Validierung");
+      showToastMessage(`Validierungsfehler: ${error.message}`, 'error');
     }
   });
 
@@ -396,7 +436,7 @@ export const WorkflowDesigner = component$(() => {
         exportedAt: new Date().toISOString(),
         exportedBy: 'current.user@company.com'
       };
-      
+
       const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -407,10 +447,10 @@ export const WorkflowDesigner = component$(() => {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       
-      alert("Workflow erfolgreich exportiert!");
+      showToastMessage("Workflow erfolgreich exportiert! 📁", 'success');
     } catch (error) {
       console.error("Error exporting workflow:", error);
-      alert("Fehler beim Exportieren");
+      showToastMessage(`Export fehlgeschlagen: ${error.message}`, 'error');
     }
   });
 
@@ -424,16 +464,18 @@ export const WorkflowDesigner = component$(() => {
       if (!file) return;
       
       try {
-        const text = await file.text();
-        const imported = JSON.parse(text) as WorkflowConfiguration;
+        console.log('Importing workflow from file:', file.name);
+        const imported = await WorkflowApiService.importWorkflow(file);
         
         currentConfig.value = imported;
         workflowSteps.value = [...imported.steps];
         selectedStep.value = null;
-        alert(`Workflow "${imported.name}" erfolgreich importiert!`);
+        
+        console.log('Workflow imported successfully:', imported);
+        showToastMessage(`Workflow "${imported.name}" erfolgreich importiert!`, 'success');
       } catch (error) {
         console.error("Error importing workflow:", error);
-        alert("Fehler beim Importieren der Datei");
+        showToastMessage(`Import fehlgeschlagen: ${error.message}`, 'error');
       }
     };
 
@@ -441,22 +483,31 @@ export const WorkflowDesigner = component$(() => {
   });
 
   const resetWorkflow = $(async () => {
-    if (confirm('Workflow zurücksetzen? Alle Änderungen gehen verloren!')) {
-      try {
-        // Simulate reset - ersetze durch MockWorkflowService.resetWorkflowToDefault
-        await new Promise(resolve => setTimeout(resolve, 500));
-        
+    // SSR-safe confirm
+    if (typeof window !== 'undefined' && !confirm('Workflow zurücksetzen? Alle Änderungen gehen verloren!')) return;
+
+    try {
+      console.log('Resetting workflow to default:', selectedWorkflowType.value);
+      const reset = await WorkflowApiService.resetWorkflowToDefault(selectedWorkflowType.value);
+      
+      if (reset) {
+        currentConfig.value = reset;
+        workflowSteps.value = [...reset.steps];
+        selectedStep.value = null;
+        console.log('Workflow reset successfully:', reset);
+        showToastMessage('Workflow auf Standard zurückgesetzt! ✅', 'success');
+      } else {
         currentConfig.value = {
           ...currentConfig.value!,
           steps: []
         };
         workflowSteps.value = [];
         selectedStep.value = null;
-        alert('Workflow wurde zurückgesetzt!');
-      } catch (error) {
-        console.error('Error resetting workflow:', error);
-        alert('Fehler beim Zurücksetzen des Workflows');
+        showToastMessage('Kein Standard-Template verfügbar. Workflow wurde geleert.', 'warning');
       }
+    } catch (error) {
+      console.error('Error resetting workflow:', error);
+      showToastMessage(`Reset fehlgeschlagen: ${error.message}`, 'error');
     }
   });
 
@@ -481,6 +532,31 @@ export const WorkflowDesigner = component$(() => {
 
   return (
     <div class="animate-fade-in">
+      {/* 🎯 TOAST NOTIFICATION */}
+      {showToast.value && (
+        <div class={`toast-container ${showToast.value ? 'toast-show' : ''}`}>
+          <div class={`toast toast-${toastType.value}`}>
+            <div class="toast-content">
+              <div class="toast-icon">
+                {toastType.value === 'success' && '✅'}
+                {toastType.value === 'error' && '❌'}
+                {toastType.value === 'warning' && '⚠️'}
+                {toastType.value === 'info' && 'ℹ️'}
+              </div>
+              <div class="toast-message">
+                {toastMessage.value}
+              </div>
+            </div>
+            <button 
+              class="toast-close"
+              onClick$={hideToast}
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header - matching your dashboard style */}
       <div class="flex justify-between items-center mb-8">
         <div>
@@ -492,7 +568,7 @@ export const WorkflowDesigner = component$(() => {
             </p>
           )}
         </div>
-        
+
         <div class="flex gap-3">
           <button class="btn btn-secondary" onClick$={validateWorkflow} disabled={isLoading.value}>
             ✅ Validieren
@@ -515,7 +591,7 @@ export const WorkflowDesigner = component$(() => {
               <h3>Workflow-Typ</h3>
             </div>
             <div class="card-content">
-              <select 
+              <select
                 class="form-input"
                 value={selectedWorkflowType.value}
                 onChange$={(e) => {
@@ -536,12 +612,12 @@ export const WorkflowDesigner = component$(() => {
             <div class="card-content">
               <div class="space-y-3">
                 {stepTemplates.map(template => (
-                  <div 
+                  <div
                     key={template.id}
                     class="template-item"
                     onClick$={() => addNewStep(template)}
                   >
-                    <div 
+                    <div
                       class="template-icon"
                       style={`background: ${template.color};`}
                     >
@@ -581,12 +657,11 @@ export const WorkflowDesigner = component$(() => {
               <h3>Workflow: {selectedWorkflowType.value}</h3>
               <div class="flex gap-2">
                 <span class="text-sm text-secondary">
-                  {workflowSteps.value.length} Schritte • 
+                  {workflowSteps.value.length} Schritte •
                   {workflowSteps.value.reduce((sum, step) => sum + step.estimatedDays, 0)} Tage geschätzt
                 </span>
               </div>
             </div>
-            
             <div class="card-content">
               {isLoading.value ? (
                 <div class="text-center py-12">
@@ -597,7 +672,7 @@ export const WorkflowDesigner = component$(() => {
                 <div class="workflow-canvas">
                   {workflowSteps.value.map((step, index) => (
                     <div key={step.id} class="workflow-step-container">
-                      <div 
+                      <div
                         class={`workflow-step group ${selectedStep.value?.id === step.id ? 'selected' : ''} ${
                           dragOverIndex.value === index ? 'drag-over' : ''
                         }`}
@@ -609,13 +684,12 @@ export const WorkflowDesigner = component$(() => {
                         onClick$={() => selectedStep.value = step}
                       >
                         <div class="workflow-step-header">
-                          <div 
+                          <div
                             class="workflow-step-icon"
                             style={`background: ${getStepColor(step.type)};`}
                           >
                             {getStepIcon(step.type)}
                           </div>
-                          
                           <div class="workflow-step-content">
                             <h4 class="workflow-step-title">{step.title}</h4>
                             <p class="workflow-step-meta">
@@ -629,7 +703,7 @@ export const WorkflowDesigner = component$(() => {
 
                           {/* Actions */}
                           <div class="workflow-step-actions">
-                            <button 
+                            <button
                               class="action-btn edit"
                               onClick$={(e) => {
                                 e.stopPropagation();
@@ -639,7 +713,7 @@ export const WorkflowDesigner = component$(() => {
                             >
                               ✏️
                             </button>
-                            <button 
+                            <button
                               class="action-btn duplicate"
                               onClick$={(e) => {
                                 e.stopPropagation();
@@ -648,11 +722,11 @@ export const WorkflowDesigner = component$(() => {
                             >
                               📋
                             </button>
-                            <button 
+                            <button
                               class="action-btn delete"
                               onClick$={(e) => {
                                 e.stopPropagation();
-                                if (confirm(`Schritt "${step.title}" löschen?`)) {
+                                if (typeof window !== 'undefined' && confirm(`Schritt "${step.title}" löschen?`)) {
                                   deleteStep(step.id);
                                 }
                               }}
@@ -704,7 +778,7 @@ export const WorkflowDesigner = component$(() => {
                       <p class="text-secondary mb-4">
                         Füge Schritte aus den Vorlagen hinzu, um deinen Workflow zu erstellen.
                       </p>
-                      <button 
+                      <button
                         class="btn btn-primary"
                         onClick$={() => addNewStep(stepTemplates[0])}
                       >
@@ -724,20 +798,19 @@ export const WorkflowDesigner = component$(() => {
             <div class="card">
               <div class="card-header">
                 <h3>Schritt bearbeiten</h3>
-                <button 
+                <button
                   class="btn btn-sm btn-secondary"
                   onClick$={() => selectedStep.value = null}
                 >
                   ✕
                 </button>
               </div>
-              
               <div class="card-content">
                 <div class="form-group">
                   <label class="form-label">Titel</label>
-                  <input 
-                    type="text" 
-                    class="form-input" 
+                  <input
+                    type="text"
+                    class="form-input"
                     value={selectedStep.value.title}
                     onInput$={(e) => {
                       const value = (e.target as HTMLInputElement).value;
@@ -748,8 +821,8 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <label class="form-label">Beschreibung</label>
-                  <textarea 
-                    class="form-input" 
+                  <textarea
+                    class="form-input"
                     rows={3}
                     value={selectedStep.value.description}
                     onInput$={(e) => {
@@ -761,7 +834,7 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <label class="form-label">Typ</label>
-                  <select 
+                  <select
                     class="form-input"
                     value={selectedStep.value.type}
                     onChange$={(e) => {
@@ -781,7 +854,7 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <label class="form-label">Verantwortlich</label>
-                  <select 
+                  <select
                     class="form-input"
                     value={selectedStep.value.responsible}
                     onChange$={(e) => {
@@ -799,9 +872,9 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <label class="form-label">Geschätzte Dauer (Tage)</label>
-                  <input 
-                    type="number" 
-                    class="form-input" 
+                  <input
+                    type="number"
+                    class="form-input"
                     min="0"
                     step="0.5"
                     value={selectedStep.value.estimatedDays}
@@ -814,8 +887,8 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <div class="checkbox-group">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="required"
                       checked={selectedStep.value.required}
                       onChange$={(e) => {
@@ -829,8 +902,8 @@ export const WorkflowDesigner = component$(() => {
 
                 <div class="form-group">
                   <div class="checkbox-group">
-                    <input 
-                      type="checkbox" 
+                    <input
+                      type="checkbox"
                       id="autoAssign"
                       checked={selectedStep.value.autoAssign || false}
                       onChange$={(e) => {
@@ -848,18 +921,18 @@ export const WorkflowDesigner = component$(() => {
                     <h4 class="form-section-title">Berechtigungen</h4>
                     <div class="form-group">
                       <label class="form-label">Erlaubte Rollen</label>
-                      <input 
-                        type="text" 
-                        class="form-input" 
+                      <input
+                        type="text"
+                        class="form-input"
                         placeholder="Manager, Approver, TechnicalLead"
                         value={selectedStep.value.permissions.allowedRoles.join(', ')}
                         onInput$={(e) => {
                           const value = (e.target as HTMLInputElement).value;
                           const roles = value.split(',').map(r => r.trim()).filter(r => r);
-                          updateStep(selectedStep.value!.id, { 
-                            permissions: { 
-                              ...selectedStep.value!.permissions!, 
-                              allowedRoles: roles 
+                          updateStep(selectedStep.value!.id, {
+                            permissions: {
+                              ...selectedStep.value!.permissions!,
+                              allowedRoles: roles
                             }
                           });
                         }}
@@ -876,18 +949,18 @@ export const WorkflowDesigner = component$(() => {
                       <div key={index} class="branch-item">
                         <div class="form-group">
                           <label class="form-label">Bedingung</label>
-                          <input 
-                            type="text" 
-                            class="form-input form-input-sm" 
+                          <input
+                            type="text"
+                            class="form-input form-input-sm"
                             value={branch.condition}
                             readOnly
                           />
                         </div>
                         <div class="form-group">
                           <label class="form-label">Label</label>
-                          <input 
-                            type="text" 
-                            class="form-input form-input-sm" 
+                          <input
+                            type="text"
+                            class="form-input form-input-sm"
                             value={branch.label}
                             readOnly
                           />
@@ -902,16 +975,16 @@ export const WorkflowDesigner = component$(() => {
                   <div class="form-section">
                     <h4 class="form-section-title">Benachrichtigungen</h4>
                     <div class="checkbox-group">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         id="notifyStart"
                         checked={selectedStep.value.notifications.onStart}
                         onChange$={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
-                          updateStep(selectedStep.value!.id, { 
-                            notifications: { 
-                              ...selectedStep.value!.notifications!, 
-                              onStart: checked 
+                          updateStep(selectedStep.value!.id, {
+                            notifications: {
+                              ...selectedStep.value!.notifications!,
+                              onStart: checked
                             }
                           });
                         }}
@@ -919,16 +992,16 @@ export const WorkflowDesigner = component$(() => {
                       <label for="notifyStart">Bei Start</label>
                     </div>
                     <div class="checkbox-group">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         id="notifyComplete"
                         checked={selectedStep.value.notifications.onComplete}
                         onChange$={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
-                          updateStep(selectedStep.value!.id, { 
-                            notifications: { 
-                              ...selectedStep.value!.notifications!, 
-                              onComplete: checked 
+                          updateStep(selectedStep.value!.id, {
+                            notifications: {
+                              ...selectedStep.value!.notifications!,
+                              onComplete: checked
                             }
                           });
                         }}
@@ -936,16 +1009,16 @@ export const WorkflowDesigner = component$(() => {
                       <label for="notifyComplete">Bei Abschluss</label>
                     </div>
                     <div class="checkbox-group">
-                      <input 
-                        type="checkbox" 
+                      <input
+                        type="checkbox"
                         id="notifyOverdue"
                         checked={selectedStep.value.notifications.onOverdue}
                         onChange$={(e) => {
                           const checked = (e.target as HTMLInputElement).checked;
-                          updateStep(selectedStep.value!.id, { 
-                            notifications: { 
-                              ...selectedStep.value!.notifications!, 
-                              onOverdue: checked 
+                          updateStep(selectedStep.value!.id, {
+                            notifications: {
+                              ...selectedStep.value!.notifications!,
+                              onOverdue: checked
                             }
                           });
                         }}
@@ -970,8 +1043,96 @@ export const WorkflowDesigner = component$(() => {
         </div>
       </div>
 
-      {/* CSS Styles */}
+      {/* CSS Styles MIT TOAST */}
       <style>{`
+        /* Toast Styles */
+        .toast-container {
+          position: fixed;
+          top: 20px;
+          right: 20px;
+          z-index: 1000;
+          opacity: 0;
+          transform: translateX(100%);
+          transition: all 0.3s ease-in-out;
+        }
+        
+        .toast-container.toast-show {
+          opacity: 1;
+          transform: translateX(0);
+        }
+        
+        .toast {
+          background: white;
+          border-radius: 8px;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+          border-left: 4px solid;
+          min-width: 300px;
+          max-width: 400px;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          padding: 16px;
+          margin-bottom: 10px;
+        }
+        
+        .toast-success {
+          border-left-color: #10b981;
+          background: linear-gradient(to right, #ecfdf5, #ffffff);
+        }
+        
+        .toast-error {
+          border-left-color: #ef4444;
+          background: linear-gradient(to right, #fef2f2, #ffffff);
+        }
+        
+        .toast-warning {
+          border-left-color: #f59e0b;
+          background: linear-gradient(to right, #fffbeb, #ffffff);
+        }
+        
+        .toast-info {
+          border-left-color: #3b82f6;
+          background: linear-gradient(to right, #eff6ff, #ffffff);
+        }
+        
+        .toast-content {
+          display: flex;
+          align-items: center;
+          flex: 1;
+        }
+        
+        .toast-icon {
+          font-size: 18px;
+          margin-right: 12px;
+          flex-shrink: 0;
+        }
+        
+        .toast-message {
+          font-size: 14px;
+          color: #374151;
+          line-height: 1.4;
+          flex: 1;
+        }
+        
+        .toast-close {
+          background: none;
+          border: none;
+          font-size: 16px;
+          color: #9ca3af;
+          cursor: pointer;
+          padding: 4px;
+          margin-left: 12px;
+          border-radius: 4px;
+          transition: all 0.2s ease;
+          flex-shrink: 0;
+        }
+        
+        .toast-close:hover {
+          background: #f3f4f6;
+          color: #374151;
+        }
+
+        /* Bestehende Styles */
         .template-item {
           display: flex;
           align-items: center;
@@ -982,12 +1143,12 @@ export const WorkflowDesigner = component$(() => {
           cursor: pointer;
           transition: all 0.2s ease;
         }
-        
+
         .template-item:hover {
           background: var(--background-color);
           border-color: var(--primary-color);
         }
-        
+
         .template-icon {
           width: 40px;
           height: 40px;
@@ -999,18 +1160,18 @@ export const WorkflowDesigner = component$(() => {
           color: white;
           flex-shrink: 0;
         }
-        
+
         .template-content {
           flex: 1;
           min-width: 0;
         }
-        
+
         .template-title {
           font-weight: 600;
           margin: 0 0 0.25rem 0;
           color: var(--text-color);
         }
-        
+
         .template-description {
           font-size: 0.875rem;
           color: var(--secondary-color);
@@ -1019,16 +1180,16 @@ export const WorkflowDesigner = component$(() => {
           text-overflow: ellipsis;
           white-space: nowrap;
         }
-        
+
         .workflow-canvas {
           min-height: 400px;
           padding: 1rem;
         }
-        
+
         .workflow-step-container {
           margin-bottom: 2rem;
         }
-        
+
         .workflow-step {
           border: 2px solid var(--border-color);
           border-radius: 0.75rem;
@@ -1037,30 +1198,30 @@ export const WorkflowDesigner = component$(() => {
           transition: all 0.2s ease;
           position: relative;
         }
-        
+
         .workflow-step:hover {
           border-color: var(--primary-color);
           box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
         }
-        
+
         .workflow-step.selected {
           border-color: var(--primary-color);
           background: rgba(59, 130, 246, 0.05);
           box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
         }
-        
+
         .workflow-step.drag-over {
           border-color: #10b981;
           background: rgba(16, 185, 129, 0.05);
         }
-        
+
         .workflow-step-header {
           display: flex;
           align-items: flex-start;
           gap: 0.75rem;
           padding: 1rem;
         }
-        
+
         .workflow-step-icon {
           width: 48px;
           height: 48px;
@@ -1073,19 +1234,19 @@ export const WorkflowDesigner = component$(() => {
           flex-shrink: 0;
           box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
-        
+
         .workflow-step-content {
           flex: 1;
           min-width: 0;
         }
-        
+
         .workflow-step-title {
           font-weight: 600;
           font-size: 1.125rem;
           margin: 0 0 0.25rem 0;
           color: var(--text-color);
         }
-        
+
         .workflow-step-meta {
           font-size: 0.875rem;
           color: var(--secondary-color);
@@ -1094,30 +1255,30 @@ export const WorkflowDesigner = component$(() => {
           align-items: center;
           gap: 0.5rem;
         }
-        
+
         .required-badge {
           color: #ef4444;
           font-weight: 600;
         }
-        
+
         .workflow-step-description {
           font-size: 0.875rem;
           color: var(--text-color);
           margin: 0;
           line-height: 1.4;
         }
-        
+
         .workflow-step-actions {
           opacity: 0;
           display: flex;
           gap: 0.25rem;
           transition: opacity 0.2s ease;
         }
-        
+
         .workflow-step:hover .workflow-step-actions {
           opacity: 1;
         }
-        
+
         .action-btn {
           width: 32px;
           height: 32px;
@@ -1130,19 +1291,19 @@ export const WorkflowDesigner = component$(() => {
           transition: background 0.2s ease;
           font-size: 0.875rem;
         }
-        
+
         .action-btn.edit:hover {
           background: rgba(59, 130, 246, 0.1);
         }
-        
+
         .action-btn.duplicate:hover {
           background: rgba(16, 185, 129, 0.1);
         }
-        
+
         .action-btn.delete:hover {
           background: rgba(239, 68, 68, 0.1);
         }
-        
+
         .workflow-step-details {
           border-top: 1px solid var(--border-color);
           padding: 0.75rem 1rem;
@@ -1150,7 +1311,7 @@ export const WorkflowDesigner = component$(() => {
           flex-wrap: wrap;
           gap: 1rem;
         }
-        
+
         .detail-item {
           display: flex;
           align-items: center;
@@ -1158,42 +1319,42 @@ export const WorkflowDesigner = component$(() => {
           font-size: 0.75rem;
           color: var(--secondary-color);
         }
-        
+
         .detail-icon {
           font-size: 0.875rem;
         }
-        
+
         .workflow-arrow {
           display: flex;
           flex-direction: column;
           align-items: center;
           margin: 0.5rem 0;
         }
-        
+
         .arrow-line {
           width: 2px;
           height: 20px;
           background: var(--border-color);
         }
-        
+
         .arrow-head {
           color: var(--secondary-color);
           font-size: 1.25rem;
           margin-top: -4px;
         }
-        
+
         .empty-state {
           text-align: center;
           padding: 3rem 1rem;
           color: var(--secondary-color);
         }
-        
+
         .form-section {
           border-top: 1px solid var(--border-color);
           padding-top: 1rem;
           margin-top: 1rem;
         }
-        
+
         .form-section-title {
           font-weight: 600;
           font-size: 0.875rem;
@@ -1202,40 +1363,40 @@ export const WorkflowDesigner = component$(() => {
           text-transform: uppercase;
           letter-spacing: 0.05em;
         }
-        
+
         .branch-item {
           padding: 0.75rem;
           border: 1px solid var(--border-color);
           border-radius: 0.5rem;
           margin-bottom: 0.5rem;
         }
-        
+
         .checkbox-group {
           display: flex;
           align-items: center;
           gap: 0.5rem;
           margin-bottom: 0.75rem;
         }
-        
+
         .checkbox-group input[type="checkbox"] {
           margin: 0;
         }
-        
+
         .checkbox-group label {
           margin: 0;
           font-size: 0.875rem;
           cursor: pointer;
         }
-        
+
         .form-input-sm {
           font-size: 0.875rem;
           padding: 0.5rem;
         }
-        
+
         .space-y-3 > * + * {
           margin-top: 0.75rem;
         }
-        
+
         .space-y-2 > * + * {
           margin-top: 0.5rem;
         }

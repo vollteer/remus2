@@ -7,7 +7,9 @@ import type {
   CheckQuestion,
   WorkflowStep 
 } from '../../../types';
-import { MockApiService } from '../../../services/mock-service';
+
+import { requirementsApi, type CreateRequirementRequest } from '~/services/api/requirements-api';
+
 
 export default component$(() => {
   const currentStep = useSignal(1);
@@ -126,29 +128,66 @@ export default component$(() => {
     }
   });
 
-  const submitForm = $(async () => {
-    isSubmitting.value = true;
+const submitForm = $(async () => {
+  isSubmitting.value = true;
+  
+  try {
+    // Prepare request data
+    const requestData: CreateRequirementRequest = {
+      title: formData.value.title,
+      type: formData.value.type,
+      realizationObject: formData.value.realizationObject,
+      priority: formData.value.priority,
+      initialSituation: formData.value.initialSituation,
+      goals: formData.value.goals,
+      budget: formData.value.budget,
+      functionalContact: formData.value.functionalContact,
+      systemResponsible: formData.value.systemResponsible,
+      dueDate: formData.value.dueDate,
+      formData: {
+        ...formData.value,
+        timestamp: new Date().toISOString(),
+        userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown'
+      }
+    };
+
+    console.log('📤 Creating requirement:', requestData);
+
+    // Call real API
+    const result = await requirementsApi.createRequirement(requestData);
     
-    try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1500));
+    if (result.success && result.data) {
+      console.log('✅ Requirement created successfully:', result.data);
       
-      // In real app: await MockApiService.createRequirement(formData.value);
+      // Show success message (SSR-safe)
+      if (typeof window !== 'undefined') {
+        // Option 1: Use alert (simple)
+        alert(`🎉 ${result.message}\n\nAnforderungs-Nr.: ${result.data.requirementNumber}`);
+        
+        // Option 2: Or redirect to the new requirement
+        window.location.href = `/requirements/${result.data.id}`;
+      }
       
-      // Redirect to requirements list or detail page
-      console.log('Created requirement:', formData.value);
-      alert('Anforderung erfolgreich erstellt!');
+    } else {
+      // Handle API error
+      console.error('❌ Failed to create requirement:', result);
+      const errorMessage = result.message || 'Unbekannter Fehler beim Erstellen der Anforderung';
       
-      // Reset form or redirect
-      window.location.href = '/requirements';
-      
-    } catch (error) {
-      console.error('Error creating requirement:', error);
-      alert('Fehler beim Erstellen der Anforderung');
-    } finally {
-      isSubmitting.value = false;
+      if (typeof window !== 'undefined') {
+        alert(`❌ Fehler: ${errorMessage}\n\nDetails: ${result.errors?.join(', ') || 'Keine Details verfügbar'}`);
+      }
     }
-  });
+    
+  } catch (error) {
+    console.error('💥 Unexpected error creating requirement:', error);
+    
+    if (typeof window !== 'undefined') {
+      alert(`💥 Unerwarteter Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+    }
+  } finally {
+    isSubmitting.value = false;
+  }
+});
 
   const getStepTitle = (step: number) => {
     const titles = {
