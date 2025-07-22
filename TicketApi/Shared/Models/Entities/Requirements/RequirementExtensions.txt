@@ -42,7 +42,7 @@ namespace TicketApi.Shared.Models.Entities.Requirements
 
                 // Form Properties
                 FormConfigurationId = entity.FormConfigurationId,
-                FormData = ParseJsonSafely(entity.FormData),
+                FormData = entity.FormData,
 
                 //  Security Properties
                 HasPersonalData = entity.HasPersonalData,
@@ -75,12 +75,5 @@ namespace TicketApi.Shared.Models.Entities.Requirements
         }
     }
 
-    public class RequirementStatisticsDto
-    {
-        public int TotalRequirements { get; set; }
-        public Dictionary<string, int> StatusDistribution { get; set; } = new();
-        public Dictionary<string, int> TypeDistribution { get; set; } = new();
-        public decimal AverageEstimatedCost { get; set; }
-    }
 
 }

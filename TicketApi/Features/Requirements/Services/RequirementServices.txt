@@ -5,10 +5,11 @@ using TicketApi.Shared.Models.Entities;
 using TicketApi.Features.Requirements.DTO;
 using TicketApi.Features.Requirements.Services;
 using TicketApi.Features.Authentication.Services;
+using TicketApi.Shared.Models.Entities.Requirements;
 
 namespace TicketApi.Features.Requirements.Services
 {
-    public class RequirementService : IRequirementsServices
+    public class RequirementService : IRequirementServices
     {
         private readonly RequirementsDbContext _context;
         private readonly IUserService _userService;
@@ -142,7 +143,7 @@ namespace TicketApi.Features.Requirements.Services
                 return null;
             }
 
-            var currentUser = await _userService.GetCurrentUserNameAsync();
+            var currentUser = await _userService.GetCurrentUserIdAsync();
 
             if (request.Title != null) requirement.Title = request.Title;
             if (request.Description != null) requirement.Description = request.Description;
@@ -166,15 +167,15 @@ namespace TicketApi.Features.Requirements.Services
             if (request.CurrentWorkflowConfigId.HasValue) requirement.CurrentWorkflowConfigId = request.CurrentWorkflowConfigId;
             if (request.WorkflowInstanceId.HasValue) requirement.WorkflowInstanceId = request.WorkflowInstanceId;
 
-            if (request.HasPersonalData.HasValue) requirement.HasPersonalData = request.HasPersonalData;
+            requirement.HasPersonalData = request.HasPersonalData;
             if (request.SecurityClassification != null) requirement.SecurityClassification = request.SecurityClassification;
-            if (request.ComplianceFlags != null) requirement.ComplianceFlags = request.ComplianceFlags; // ✅ Dein Feld
+            if (request.ComplianceFlags != null) requirement.ComplianceFlags = request.ComplianceFlags; 
 
-            // ✅ Form Data Update
+            // Form Data Update
             if (request.FormData != null)
                 requirement.FormData = JsonConvert.SerializeObject(request.FormData);
 
-            // ✅ ModifiedAt wird IMMER aktualisiert
+            // ModifiedAt wird IMMER aktualisiert
             requirement.ModifiedAt = DateTime.UtcNow;
             requirement.ModifiedBy = currentUser;
 

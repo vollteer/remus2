@@ -3,6 +3,7 @@
 // ============================================================================
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
+using Microsoft.Identity.Client;
 
 namespace TicketApi.Features.Requirements.DTO
 {
@@ -30,15 +31,15 @@ namespace TicketApi.Features.Requirements.DTO
         public string Currency { get; set; } = "EUR";
 
         // Dates (angepasst an deine Naming)
-        public DateTime? RequestedDate { get; set; } // ← Dein Feld!
+        public DateTime? RequestedDate { get; set; } 
         public DateTime? RequiredByDate { get; set; } // ← Dein Feld statt RequestedDueDate!
-        public DateTime? StartDate { get; set; } // ← Fehlte!
-        public DateTime? CompletedDate { get; set; } // ← Fehlte!
+        public DateTime? StartDate { get; set; } 
+        public DateTime? CompletedDate { get; set; } 
 
         // Workflow State (aus deiner DB)
-        public Guid? CurrentWorkflowConfigId { get; set; } // ← Fehlte!
-        public string? CurrentWorkflowStep { get; set; } // ← Fehlte!
-        public Guid? WorkflowInstanceId { get; set; } // ← Fehlte!
+        public Guid? CurrentWorkflowConfigId { get; set; } 
+        public string? CurrentWorkflowStep { get; set; } 
+        public Guid? WorkflowInstanceId { get; set; } 
 
         // Form Data 
         public string? FormData { get; set; } // JSON string
@@ -59,6 +60,11 @@ namespace TicketApi.Features.Requirements.DTO
         public WorkflowInstanceDto? WorkflowInstance { get; set; }
         public List<AttachmentDto> Attachments { get; set; } = new();
         public List<RequirementHistoryDto> History { get; set; } = new();
+        public string? WorkflowConfigName { get; set; }
+        public string? FormConfigName { get; set; }
+        public int AttachmentCount { get; set; }
+        public int CommentCount { get; set; }
+
     }
 
     // Create Request DTO - ANGEPASST AN DEINE DB-FELDER!
@@ -122,6 +128,7 @@ namespace TicketApi.Features.Requirements.DTO
 
         // Form data (JSON)
         public string? FormData { get; set; }
+      
     }
 
     // Update Request DTO
@@ -131,6 +138,8 @@ namespace TicketApi.Features.Requirements.DTO
         public string? Title { get; set; }
         [StringLength(2000)]
         public string? Description { get; set; }
+        public string Currency { get; set; } = "EUR";
+        public decimal? ActualCost { get; set; }
         public string? ComplianceFlags { get; set; }
         [Range(0, 999999999)]
         public decimal? EstimatedCost { get; set; }
@@ -188,6 +197,10 @@ namespace TicketApi.Features.Requirements.DTO
         public string? FormData { get; set; }
         [StringLength(255)]
         public string? BusinessOwner { get; set; }
+        public string? CurrentWorkflowStep { get; set; }
+        public Guid? CurrentWorkflowConfigId { get; set; }
+        public Guid? WorkflowInstanceId { get; set; }
+        public DateTime? CompletedDate { get; set; }
     }
 
     // Person DTO for contacts/responsible persons
@@ -304,15 +317,29 @@ namespace TicketApi.Features.Requirements.DTO
     public class RequirementStatisticsDto
     {
         public int TotalRequirements { get; set; }
-        public Dictionary<string, int> ByType { get; set; } = new();
-        public Dictionary<string, int> ByStatus { get; set; } = new();
-        public Dictionary<string, int> ByPriority { get; set; } = new();
-        public Dictionary<string, int> ByCreatedMonth { get; set; } = new();
+        public Dictionary<string, int> TypeDistribution { get; set; } = new();
+        public Dictionary<string, int> StatusDistribution { get; set; } = new();
+        public Dictionary<string, int> PriorityDistribution { get; set; } = new();
+        public Dictionary<string, int> CreatedByMonthDistribution { get; set; } = new();
         public decimal TotalEstimatedBudget { get; set; }
         public int OverdueCount { get; set; }
         public int InProgressCount { get; set; }
         public int CompletedThisMonth { get; set; }
         public double AverageCompletionDays { get; set; }
+        // financial metrics
+        public decimal AverageEstimatedCost { get; set; }
+        public decimal TotalApprovedBudget  { get; set; }
+        public decimal TotalActualCost { get; set; }   
+        // performance
+        public double AverageTimeToStart { get; set; }
+        // department owner analytics
+        public Dictionary<string, int> DepartmentDistribution { get; set; } = new();
+        public Dictionary<string, int?> BusinessOwnerDistribution { get; set; } = new();
+        // time-based
+        public DateTime? EarliestRequirement {  get; set; }
+        public DateTime? LatestRequirement { get; set; }
+        // Trend
+        public Dictionary<string, decimal> MonthlyTrends { get; set; } = new();
     }
 
     // Validation Result DTO

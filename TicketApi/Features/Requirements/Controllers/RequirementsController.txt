@@ -8,7 +8,7 @@ namespace TicketApi.Features.Requirements.Controllers
     [Route("api/[controller]")]
     public class RequirementsController : ControllerBase
     {
-        private readonly IRequirementsService _service;
+        private readonly IRequirementServices _service;
 
         [HttpPost]
         public async Task<ActionResult<RequirementDto>> CreateRequirement([FromBody] CreateRequirementRequest request)
@@ -56,3 +56,5 @@ namespace TicketApi.Features.Requirements.Controllers
             return NoContent();
 
         }
+    }
+}
