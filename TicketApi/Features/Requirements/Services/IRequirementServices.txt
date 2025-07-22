@@ -3,7 +3,7 @@ using TicketApi.Features.Requirements.DTO;
 
 namespace TicketApi.Features.Requirements.Services
 {
-    public interface IRequirementsService
+    public interface IRequirementsServices
     {
         // CRUD Operations
         Task<RequirementDto> CreateRequirementAsync(CreateRequirementRequest request);

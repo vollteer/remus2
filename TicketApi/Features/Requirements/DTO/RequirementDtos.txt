@@ -30,7 +30,7 @@ namespace TicketApi.Features.Requirements.DTO
         public string Currency { get; set; } = "EUR";
 
         // Dates (angepasst an deine Naming)
-        public DateTime RequestedDate { get; set; } // ← Dein Feld!
+        public DateTime? RequestedDate { get; set; } // ← Dein Feld!
         public DateTime? RequiredByDate { get; set; } // ← Dein Feld statt RequestedDueDate!
         public DateTime? StartDate { get; set; } // ← Fehlte!
         public DateTime? CompletedDate { get; set; } // ← Fehlte!
@@ -40,17 +40,17 @@ namespace TicketApi.Features.Requirements.DTO
         public string? CurrentWorkflowStep { get; set; } // ← Fehlte!
         public Guid? WorkflowInstanceId { get; set; } // ← Fehlte!
 
-        // Form Data (aus deiner DB)
+        // Form Data 
         public string? FormData { get; set; } // JSON string
-        public Guid? FormConfigurationId { get; set; } // ← Fehlte!
+        public Guid? FormConfigurationId { get; set; }
 
-        // Compliance & Security (aus deiner DB - fehlten komplett!)
-        public bool HasPersonalData { get; set; } = false;
+        // Compliance & Security 
+        public bool? HasPersonalData { get; set; } = false;
         public string SecurityClassification { get; set; } = "Internal";
         public string? ComplianceFlags { get; set; } // JSON
 
         // Timestamps
-        public DateTime CreatedAt { get; set; }
+        public DateTime? CreatedAt { get; set; }
         public DateTime? ModifiedAt { get; set; }
         public string CreatedBy { get; set; } = string.Empty;
         public string? ModifiedBy { get; set; }
