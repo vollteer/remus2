@@ -1,0 +1,11 @@
+﻿using TicketApi.Shared.Models;
+
+namespace TicketApi.Features.TicketSearch.Services
+{
+    public interface ITicketService
+    {
+        Task<IQueryable<Ticket>> GetTicketsAsQueryable(string userId);
+
+        Task<Ticket> GetByIdAsync(int ticketId, string userId, CancellationToken cancel);
+    }
+}

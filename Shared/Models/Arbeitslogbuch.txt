@@ -1,0 +1,20 @@
+﻿namespace TicketApi.Shared.Models;
+
+public partial class Arbeitslogbuch
+{
+    public int Id { get; set; }
+
+    public int IdAnfo { get; set; }
+
+    public string Schrittname { get; set; } = null!;
+
+    public DateTime Datum { get; set; }
+
+    public string? Bemerkung { get; set; }
+
+    public string? Aenderung { get; set; }
+
+    public string? BearbeiterName { get; set; }
+
+    public string? BearbeiterUserid { get; set; }
+}

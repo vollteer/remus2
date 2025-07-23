@@ -1,0 +1,14 @@
+﻿using TicketApi.Shared.Models;
+
+namespace TicketApi.Features.Authentication.Services
+{
+    public interface IUserService
+    {
+        Task<User?> GetCurrentUserObject(CancellationToken cancellationToken = default);
+        Task<string> GetCurrentUserIdAsync();
+        Task<List<string>> GetUserRolesAsync(CancellationToken cancellationToken = default);
+
+
+        //Task<bool> IsUserAdminAsync(string userId, CancellationToken token = default);
+    }
+}

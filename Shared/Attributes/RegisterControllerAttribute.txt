@@ -1,0 +1,8 @@
+﻿namespace TicketApi.Shared.Attributes
+{
+    [AttributeUsage(AttributeTargets.Class)]
+    public class RegisterControllerAttribute(bool shouldRegister = true) : Attribute
+    {
+        public bool ShouldRegister { get; } = shouldRegister;
+    }
+}

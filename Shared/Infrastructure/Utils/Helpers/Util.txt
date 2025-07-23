@@ -1,0 +1,20 @@
+﻿using System.Net;
+using Microsoft.OpenApi.Models;
+
+namespace TicketApi.Shared.Infrastructure.Utils.Helpers
+{
+    public static class Util
+    {
+        internal static OpenApiResponse CreateResponse(HttpStatusCode statusCode, OpenApiSchema schema)
+        {
+            return new OpenApiResponse
+            {
+                Description = statusCode.ToString(),
+                Content = new Dictionary<string, OpenApiMediaType>
+                {
+                    { "application/json", new OpenApiMediaType { Schema = schema } }
+                }
+            };
+        }
+    }
+}

@@ -1,0 +1,279 @@
+﻿namespace TicketApi.Features.WorkflowBuilder.Controllers
+{
+    using System.ComponentModel.DataAnnotations;
+    using Microsoft.AspNetCore.Mvc;
+    using TicketApi.Features.WorkflowBuilder.DTO;
+    using TicketApi.Features.WorkflowBuilder.Services;
+
+    namespace RequirementsApi.Controllers
+    {
+        [ApiController]
+        [Route("api/[controller]")]
+        public class WorkflowController : ControllerBase
+        {
+            private readonly IWorkflowService _workflowService;
+            private readonly ILogger<WorkflowController> _logger;
+
+    public WorkflowController(IWorkflowService workflowService, ILogger<WorkflowController> logger)
+            {
+                _workflowService = workflowService;
+                _logger = logger;
+            }
+
+            // GET /api/workflow/configurations
+            [HttpGet("configurations")]
+            public async Task<ActionResult<List<WorkflowConfigurationDto>>> GetWorkflowConfigurations()
+            {
+                try
+                {
+                    var configurations = await _workflowService.GetAllWorkflowConfigurationsAsync();
+                    return Ok(configurations);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving workflow configurations");
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+            
+            // GET /api/workflow/configuration/{type}
+            [HttpGet("configuration/{workflowType}")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> GetWorkflowByType(string workflowType)
+            {
+                try
+                {
+                    var workflow = await _workflowService.GetWorkflowByTypeAsync(workflowType);
+                    if (workflow == null)
+                        return NotFound($"Workflow type '{workflowType}' not found");
+
+                    return Ok(workflow);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving workflow for type {WorkflowType}", workflowType);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/configuration
+            [HttpPost("configuration")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> CreateWorkflowConfiguration([FromBody] CreateWorkflowConfigurationDto request)
+            {
+                try
+                {
+                    if (!ModelState.IsValid)
+                        return BadRequest(ModelState);
+
+                    var created = await _workflowService.CreateWorkflowConfigurationAsync(request);
+                    return CreatedAtAction(nameof(GetWorkflowByType), new { workflowType = created.Type }, created);
+                }
+                catch (ArgumentException ex)
+                {
+                    return BadRequest(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error creating workflow configuration");
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // PUT /api/workflow/configuration/{id}
+            [HttpPut("configuration/{id:guid}")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> UpdateWorkflowConfiguration(Guid id, [FromBody] UpdateWorkflowConfigurationDto request)
+            {
+                try
+                {
+                    if (!ModelState.IsValid)
+                        return BadRequest(ModelState);
+
+                    var updated = await _workflowService.UpdateWorkflowConfigurationAsync(id, request);
+                    if (updated == null)
+                        return NotFound($"Workflow configuration with ID {id} not found");
+
+                    return Ok(updated);
+                }
+                catch (ArgumentException ex)
+                {
+                    return BadRequest(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error updating workflow configuration {Id}", id);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // DELETE /api/workflow/configuration/{id}
+            [HttpDelete("configuration/{id:guid}")]
+            public async Task<ActionResult> DeleteWorkflowConfiguration(Guid id)
+            {
+                try
+                {
+                    var deleted = await _workflowService.DeleteWorkflowConfigurationAsync(id);
+                    if (!deleted)
+                        return NotFound($"Workflow configuration with ID {id} not found");
+
+                    return NoContent();
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error deleting workflow configuration {Id}", id);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/validate
+            [HttpPost("validate")]
+            public async Task<ActionResult<WorkflowValidationResultDto>> ValidateWorkflow([FromBody] WorkflowConfigurationDto workflow)
+            {
+                try
+                {
+                    var result = await _workflowService.ValidateWorkflowAsync(workflow);
+                    return Ok(result);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error validating workflow");
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // GET /api/workflow/templates
+            [HttpGet("templates")]
+            public async Task<ActionResult<Dictionary<string, WorkflowConfigurationDto>>> GetWorkflowTemplates()
+            {
+                try
+                {
+                    var templates = await _workflowService.GetWorkflowTemplatesAsync();
+                    return Ok(templates);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving workflow templates");
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/export/{id}
+            [HttpPost("export/{id:guid}")]
+            public async Task<ActionResult> ExportWorkflow(Guid id)
+            {
+                try
+                {
+                    var exportData = await _workflowService.ExportWorkflowAsync(id);
+                    if (exportData == null)
+                        return NotFound($"Workflow with ID {id} not found");
+
+                    return File(exportData, "application/json", $"workflow-{id}.json");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error exporting workflow {Id}", id);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/import
+            [HttpPost("import")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> ImportWorkflow(IFormFile file)
+            {
+                try
+                {
+                    if (file == null || file.Length == 0)
+                        return BadRequest("No file provided");
+
+                    using var stream = file.OpenReadStream();
+                    var imported = await _workflowService.ImportWorkflowAsync(stream);
+                    return Ok(imported);
+                }
+                catch (ArgumentException ex)
+                {
+                    return BadRequest(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error importing workflow");
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/reset/{workflowType}
+            [HttpPost("reset/{workflowType}")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> ResetToDefault(string workflowType)
+            {
+                try
+                {
+                    var reset = await _workflowService.ResetWorkflowToDefaultAsync(workflowType);
+                    if (reset == null)
+                        return NotFound($"No default template found for workflow type '{workflowType}'");
+
+                    return Ok(reset);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error resetting workflow {WorkflowType} to default", workflowType);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // GET /api/workflow/statistics/{workflowType}
+            [HttpGet("statistics/{workflowType}")]
+            public async Task<ActionResult<WorkflowStatisticsDto>> GetWorkflowStatistics(string workflowType)
+            {
+                try
+                {
+                    var stats = await _workflowService.GetWorkflowStatisticsAsync(workflowType);
+                    if (stats == null)
+                        return NotFound($"Workflow type '{workflowType}' not found");
+
+                    return Ok(stats);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error retrieving workflow statistics for {WorkflowType}", workflowType);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+
+            // POST /api/workflow/clone/{sourceId}
+            [HttpPost("clone/{sourceId:guid}")]
+            public async Task<ActionResult<WorkflowConfigurationDto>> CloneWorkflow(Guid sourceId, [FromBody] CloneWorkflowRequestDto request)
+            {
+                try
+                {
+                    if (!ModelState.IsValid)
+                        return BadRequest(ModelState);
+
+                    var cloned = await _workflowService.CloneWorkflowAsync(sourceId, request.NewName, request.NewType);
+                    if (cloned == null)
+                        return NotFound($"Source workflow with ID {sourceId} not found");
+
+                    return CreatedAtAction(nameof(GetWorkflowByType), new { workflowType = cloned.Type }, cloned);
+                }
+                catch (ArgumentException ex)
+                {
+                    return BadRequest(ex.Message);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Error cloning workflow {SourceId}", sourceId);
+                    return StatusCode(500, "Internal server error");
+                }
+            }
+        }
+
+        public class CloneWorkflowRequestDto
+        {
+            [Required]
+            [StringLength(100)]
+            public string NewName { get; set; } = string.Empty;
+
+            [Required]
+            [StringLength(50)]
+            public string NewType { get; set; } = string.Empty;
+        }
+
+}
+
+}
