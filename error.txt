@@ -1,0 +1,17 @@
+Captured variable in the closure can not be serialized because it's a function named "validateParallelGroups". You might need to convert it to a QRL using $(fn):
+
+const validateParallelGroups = $((parallelGroups)=>{
+        const result = {
+            isValid: true,
+            errors: [],
+            incompleteGroups: []
+        };
+        parallelGroups.forEach((group)=>{
+            if (!group.steps || group.steps.length < 2) {
+                result.errors.push(`Parallel Group "${group.id}" hat weniger als 2 Steps`);
+                result.incompleteGroups.push(group.id);
+                result.isValid = false;
+            }
+        });
+        return result;
+    });
