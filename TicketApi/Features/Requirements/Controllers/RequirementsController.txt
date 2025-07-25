@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.CodeAnalysis.CSharp.Syntax;
 using TicketApi.Features.Requirements.DTO;
 using TicketApi.Features.Requirements.Services;
 
@@ -6,9 +7,9 @@ namespace TicketApi.Features.Requirements.Controllers
 {
     [ApiController]
     [Route("api/[controller]")]
-    public class RequirementsController : ControllerBase
+    public class RequirementsController(IRequirementServices service) : ControllerBase
     {
-        private readonly IRequirementServices _service;
+        private readonly IRequirementServices _service = service;
 
         [HttpPost]
         public async Task<ActionResult<RequirementDto>> CreateRequirement([FromBody] CreateRequirementRequest request)
@@ -31,10 +32,33 @@ namespace TicketApi.Features.Requirements.Controllers
             [FromQuery] string? type = null,
             [FromQuery] string? status = null,
             [FromQuery] string? priority = null,
+            [FromQuery] string? department = null,
+            [FromQuery] string? searchText = null,
+            [FromQuery] DateTime? createdFrom = null,
+            [FromQuery] DateTime? createdTo = null,
+
+
             [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20)
+            [FromQuery] int pageSize = 20,
+            [FromQuery] string? sortBy = "CreatedAt",
+            [FromQuery] string? sortDirection = "desc"
+            )
         {
-            var result = await _service.GetRequirementsAsync(type, status, priority, page, pageSize);
+            var query = new RequirementQueryRequest
+            {
+                Type = type,
+                Status = status,
+                Priority = priority,
+                Department = department,
+                SearchText = searchText,
+                CreatedFrom = createdFrom,
+                CreatedTo = createdTo,
+                Page = page,
+                PageSize = pageSize,
+                SortBy = sortBy,
+                SortDirection = sortDirection
+            };
+            var result = await _service.GetRequirementsAsync(query);
             return Ok(result);
         }
 

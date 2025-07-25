@@ -285,6 +285,7 @@ namespace TicketApi.Features.Requirements.DTO
         public string? Status { get; set; }
         public string? Priority { get; set; }
         public string? CreatedBy { get; set; }
+        public string? Department { get; set; }
         public Guid? FunctionalContactId { get; set; }
         public Guid? SystemResponsibleId { get; set; }
         public DateTime? CreatedFrom { get; set; }

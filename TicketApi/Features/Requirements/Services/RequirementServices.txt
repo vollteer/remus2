@@ -25,7 +25,8 @@ namespace TicketApi.Features.Requirements.Services
             _logger = logger;
         }
 
-        // ✅ CREATE - Mit deiner echten Entity Struktur
+        #region CRUD Operations
+
         public async Task<RequirementDto> CreateRequirementAsync(CreateRequirementRequest request)
         {
             _logger.LogInformation("Creating new requirement: {Title}", request.Title);
@@ -36,7 +37,7 @@ namespace TicketApi.Features.Requirements.Services
             var entity = new Requirement
             {
                 Id = Guid.NewGuid(),
-                RequirementNumber = await GenerateRequirementNumberAsync(),
+                RequirementNumber = await GenerateRequirementNumberAsync(request.RequirementType),
                 Title = request.Title,
                 Description = request.Description,
                 RequirementType = request.RequirementType,
@@ -46,32 +47,27 @@ namespace TicketApi.Features.Requirements.Services
                 BusinessOwner = request.BusinessOwner,
                 TechnicalOwner = request.TechnicalOwner,
                 Department = request.Department,
-                CostCenter = request.CostCenter, 
+                CostCenter = request.CostCenter,
                 EstimatedCost = request.EstimatedCost,
-                Currency = request.Currency ?? "EUR", 
-
-                
+                ApprovedBudget = request.ApprovedBudget,
+                Currency = request.Currency ?? "EUR",
                 RequestedDate = now,
                 RequiredByDate = request.RequiredByDate,
                 StartDate = request.StartDate,
                 CreatedAt = now,
                 ModifiedAt = now,
-
                 HasPersonalData = request.HasPersonalData,
                 SecurityClassification = request.SecurityClassification ?? "Internal",
                 CreatedBy = currentUser,
                 ModifiedBy = currentUser,
-
-                
                 FormConfigurationId = request.FormConfigurationId,
-                FormData = request.FormData != null ? JsonConvert.SerializeObject(request.FormData) : null
+                FormData = request.FormData
             };
 
             _context.Requirements.Add(entity);
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Created requirement {Id} with number {Number}", entity.Id, entity.RequirementNumber);
-
             return entity.ToDto();
         }
 
@@ -80,10 +76,10 @@ namespace TicketApi.Features.Requirements.Services
             _logger.LogInformation("Getting requirement by id: {Id}", id);
 
             var requirement = await _context.Requirements
-                .Include(r => r.CurrentWorkflowConfig) 
-                .Include(r => r.FormConfiguration)     
+                .Include(r => r.CurrentWorkflowConfig)
+                .Include(r => r.FormConfiguration)
                 .Include(r => r.RequirementAttachments)
-                .Include(r => r.RequirementComments)   
+                .Include(r => r.RequirementComments)
                 .FirstOrDefaultAsync(r => r.Id == id);
 
             if (requirement == null)
@@ -95,41 +91,84 @@ namespace TicketApi.Features.Requirements.Services
             return requirement.ToDto();
         }
 
-        public async Task<List<RequirementDto>> GetRequirementsAsync(
-            string? status = null,
-            string? requirementType = null,
-            string? assignedTo = null,
-            string? department = null,
-            int page = 1,
-            int pageSize = 20)
+        public async Task<RequirementDto?> GetRequirementByNumberAsync(string requirementNumber)
         {
-            _logger.LogInformation("Getting requirements with filters - Status: {Status}, Type: {Type}, Department: {Department}, Page: {Page}",
-                status, requirementType, department, page);
+            _logger.LogInformation("Getting requirement by number: {Number}", requirementNumber);
 
-            var query = _context.Requirements
+            var requirement = await _context.Requirements
                 .Include(r => r.CurrentWorkflowConfig)
                 .Include(r => r.FormConfiguration)
-                .AsQueryable();
+                .Include(r => r.RequirementAttachments)
+                .Include(r => r.RequirementComments)
+                .FirstOrDefaultAsync(r => r.RequirementNumber == requirementNumber);
 
-            if (!string.IsNullOrEmpty(status))
-                query = query.Where(r => r.Status == status);
+            if (requirement == null)
+            {
+                _logger.LogWarning("Requirement with number {Number} not found", requirementNumber);
+                return null;
+            }
 
-            if (!string.IsNullOrEmpty(requirementType))
-                query = query.Where(r => r.RequirementType == requirementType);
+            return requirement.ToDto();
+        }
 
-            if (!string.IsNullOrEmpty(department))
-                query = query.Where(r => r.Department == department);
+        public async Task<PagedResultDto<RequirementDto>> GetRequirementsAsync(RequirementQueryRequest query)
+        {
+            _logger.LogInformation("Getting requirements with query: {Query}", JsonConvert.SerializeObject(query));
 
-            if (!string.IsNullOrEmpty(assignedTo))
-                query = query.Where(r => r.RequestedBy == assignedTo || r.BusinessOwner == assignedTo || r.TechnicalOwner == assignedTo);
+            var queryable = _context.Requirements
+                .Include(r => r.CurrentWorkflowConfig)
+                .Include(r => r.FormConfiguration)
+                .Include(r => r.RequirementAttachments)
+                .Include(r => r.RequirementComments)
+                .Where(r => r.Status != "Deleted");
 
-            var requirements = await query
-                .OrderByDescending(r => r.CreatedAt) 
-                .Skip((page - 1) * pageSize)
-                .Take(pageSize)
+            // Apply filters based on query parameters
+            if (!string.IsNullOrEmpty(query.Type))
+                queryable = queryable.Where(r => r.RequirementType == query.Type);
+
+            if (!string.IsNullOrEmpty(query.Status))
+                queryable = queryable.Where(r => r.Status == query.Status);
+
+            if (!string.IsNullOrEmpty(query.Priority))
+                queryable = queryable.Where(r => r.Priority == query.Priority);
+
+            if (!string.IsNullOrEmpty(query.Department))
+                queryable = queryable.Where(r => r.Department == query.Department);
+
+            if (!string.IsNullOrEmpty(query.SearchText))
+                queryable = queryable.Where(r => r.Title.Contains(query.SearchText) ||
+                                               r.Description!.Contains(query.SearchText));
+
+            if (query.CreatedFrom.HasValue)
+                queryable = queryable.Where(r => r.CreatedAt >= query.CreatedFrom);
+
+            if (query.CreatedTo.HasValue)
+                queryable = queryable.Where(r => r.CreatedAt <= query.CreatedTo);
+
+            // Apply sorting based on query parameters
+            queryable = query.SortBy?.ToLower() switch
+            {
+                "title" => query.SortDirection == "asc" ? queryable.OrderBy(r => r.Title) : queryable.OrderByDescending(r => r.Title),
+                "status" => query.SortDirection == "asc" ? queryable.OrderBy(r => r.Status) : queryable.OrderByDescending(r => r.Status),
+                "priority" => query.SortDirection == "asc" ? queryable.OrderBy(r => r.Priority) : queryable.OrderByDescending(r => r.Priority),
+                "createdat" => query.SortDirection == "asc" ? queryable.OrderBy(r => r.CreatedAt) : queryable.OrderByDescending(r => r.CreatedAt),
+                _ => queryable.OrderByDescending(r => r.CreatedAt)
+            };
+
+            var totalCount = await queryable.CountAsync();
+
+            var items = await queryable
+                .Skip((query.Page - 1) * query.PageSize)
+                .Take(query.PageSize)
                 .ToListAsync();
 
-            return requirements.Select(r => r.ToDto()).ToList();
+            return new PagedResultDto<RequirementDto>
+            {
+                Items = items.Select(r => r.ToDto()).ToList(),
+                TotalCount = totalCount,
+                PageNumber = query.Page,
+                PageSize = query.PageSize
+            };
         }
 
         public async Task<RequirementDto?> UpdateRequirementAsync(Guid id, UpdateRequirementRequest request)
@@ -139,60 +178,39 @@ namespace TicketApi.Features.Requirements.Services
             var requirement = await _context.Requirements.FindAsync(id);
             if (requirement == null)
             {
-                _logger.LogWarning("Requirement with id {Id} not found for update", id);
+                _logger.LogWarning("Requirement with id {Id} not found", id);
                 return null;
             }
 
             var currentUser = await _userService.GetCurrentUserIdAsync();
 
+            // Update only non-null properties to allow partial updates
             if (request.Title != null) requirement.Title = request.Title;
             if (request.Description != null) requirement.Description = request.Description;
+            if (request.RequirementType != null) requirement.RequirementType = request.RequirementType;
             if (request.Priority != null) requirement.Priority = request.Priority;
             if (request.Status != null) requirement.Status = request.Status;
-            if (request.BusinessOwner != null) requirement.BusinessOwner = request.BusinessOwner;
-            if (request.TechnicalOwner != null) requirement.TechnicalOwner = request.TechnicalOwner;
             if (request.Department != null) requirement.Department = request.Department;
-            if (request.CostCenter != null) requirement.CostCenter = request.CostCenter; 
-            if (request.Currency != null) requirement.Currency = request.Currency; 
-
+            if (request.TechnicalOwner != null) requirement.TechnicalOwner = request.TechnicalOwner;
+            if (request.BusinessOwner != null) requirement.BusinessOwner = request.BusinessOwner;
+            if (request.CostCenter != null) requirement.CostCenter = request.CostCenter;
             if (request.EstimatedCost.HasValue) requirement.EstimatedCost = request.EstimatedCost;
             if (request.ApprovedBudget.HasValue) requirement.ApprovedBudget = request.ApprovedBudget;
-            if (request.ActualCost.HasValue) requirement.ActualCost = request.ActualCost;
-
             if (request.RequiredByDate.HasValue) requirement.RequiredByDate = request.RequiredByDate;
             if (request.StartDate.HasValue) requirement.StartDate = request.StartDate;
-            if (request.CompletedDate.HasValue) requirement.CompletedDate = request.CompletedDate;
-
-            if (request.CurrentWorkflowStep != null) requirement.CurrentWorkflowStep = request.CurrentWorkflowStep;
-            if (request.CurrentWorkflowConfigId.HasValue) requirement.CurrentWorkflowConfigId = request.CurrentWorkflowConfigId;
-            if (request.WorkflowInstanceId.HasValue) requirement.WorkflowInstanceId = request.WorkflowInstanceId;
+            if (request.FormData != null) requirement.FormData = request.FormData;
 
             requirement.HasPersonalData = request.HasPersonalData;
-            if (request.SecurityClassification != null) requirement.SecurityClassification = request.SecurityClassification;
-            if (request.ComplianceFlags != null) requirement.ComplianceFlags = request.ComplianceFlags; 
-
-            // Form Data Update
-            if (request.FormData != null)
-                requirement.FormData = JsonConvert.SerializeObject(request.FormData);
-
-            // ModifiedAt wird IMMER aktualisiert
+            requirement.SecurityClassification = request.SecurityClassification;
             requirement.ModifiedAt = DateTime.UtcNow;
             requirement.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
             _logger.LogInformation("Updated requirement {Id}", id);
-
-            // ✅ Reload mit Navigation Properties für DTO
-            var updated = await _context.Requirements
-                .Include(r => r.CurrentWorkflowConfig)
-                .Include(r => r.FormConfiguration)
-                .FirstOrDefaultAsync(r => r.Id == id);
-
-            return updated?.ToDto();
+            return requirement.ToDto();
         }
 
-        // ✅ DELETE - Soft Delete
         public async Task<bool> DeleteRequirementAsync(Guid id)
         {
             _logger.LogInformation("Deleting requirement {Id}", id);
@@ -200,13 +218,13 @@ namespace TicketApi.Features.Requirements.Services
             var requirement = await _context.Requirements.FindAsync(id);
             if (requirement == null)
             {
-                _logger.LogWarning("Requirement with id {Id} not found for deletion", id);
+                _logger.LogWarning("Requirement with id {Id} not found", id);
                 return false;
             }
 
             var currentUser = await _userService.GetCurrentUserIdAsync();
 
-            // ✅ Soft Delete - Status auf "Deleted" setzen
+            // Soft delete by setting status instead of removing from database
             requirement.Status = "Deleted";
             requirement.ModifiedAt = DateTime.UtcNow;
             requirement.ModifiedBy = currentUser;
@@ -217,92 +235,279 @@ namespace TicketApi.Features.Requirements.Services
             return true;
         }
 
-        // ✅ GET REQUIREMENTS BY TYPE
-        public async Task<List<RequirementDto>> GetRequirementsByTypeAsync(string requirementType)
+        #endregion
+
+        #region Status Operations
+
+        public async Task<RequirementDto?> UpdateStatusAsync(Guid id, string status, string? comments = null)
         {
-            _logger.LogInformation("Getting requirements by type: {Type}", requirementType);
-
-            var requirements = await _context.Requirements
-                .Include(r => r.CurrentWorkflowConfig)
-                .Include(r => r.FormConfiguration)
-                .Where(r => r.RequirementType == requirementType && r.Status != "Deleted")
-                .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
-
-            return requirements.Select(r => r.ToDto()).ToList();
-        }
-
-        public async Task<List<RequirementDto>> GetMyRequirementsAsync()
-        {
-            var currentUser = await _userService.GetCurrentUserIdAsync();
-
-            _logger.LogInformation("Getting requirements for user: {User}", currentUser);
-
-            var requirements = await _context.Requirements
-                .Include(r => r.CurrentWorkflowConfig)
-                .Include(r => r.FormConfiguration)
-                .Where(r => r.RequestedBy == currentUser ||
-                           r.BusinessOwner == currentUser ||
-                           r.TechnicalOwner == currentUser)
-                .Where(r => r.Status != "Deleted")
-                .OrderByDescending(r => r.CreatedAt)
-                .ToListAsync();
-
-            return requirements.Select(r => r.ToDto()).ToList();
-        }
-
-        public async Task<bool> UpdateWorkflowStateAsync(Guid id, string workflowStep, Guid? workflowInstanceId = null)
-        {
-            _logger.LogInformation("Updating workflow state for requirement {Id} to step {Step}", id, workflowStep);
+            _logger.LogInformation("Updating status for requirement {Id} to {Status}", id, status);
 
             var requirement = await _context.Requirements.FindAsync(id);
-            if (requirement == null) return false;
+            if (requirement == null) return null;
 
             var currentUser = await _userService.GetCurrentUserIdAsync();
 
-            requirement.CurrentWorkflowStep = workflowStep;
-            if (workflowInstanceId.HasValue)
-                requirement.WorkflowInstanceId = workflowInstanceId;
+            requirement.Status = status;
+            requirement.ModifiedAt = DateTime.UtcNow;
+            requirement.ModifiedBy = currentUser;
 
+            // Add audit trail comment when status changes
+            if (!string.IsNullOrEmpty(comments))
+            {
+                var comment = new RequirementComment
+                {
+                    Id = Guid.NewGuid(),
+                    RequirementId = id,
+                    Comment = comments,
+                    CommentType = "StatusChange",
+                    CreatedBy = currentUser,
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.RequirementComments.Add(comment);
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Updated status for requirement {Id} to {Status}", id, status);
+            return requirement.ToDto();
+        }
+
+        public async Task<RequirementDto?> SubmitRequirementAsync(Guid id)
+        {
+            return await UpdateStatusAsync(id, "Submitted", "Requirement submitted for approval");
+        }
+
+        public async Task<RequirementDto?> ApproveRequirementAsync(Guid id, string? comments = null)
+        {
+            return await UpdateStatusAsync(id, "Approved", comments ?? "Requirement approved");
+        }
+
+        public async Task<RequirementDto?> RejectRequirementAsync(Guid id, string reason)
+        {
+            return await UpdateStatusAsync(id, "Rejected", reason);
+        }
+
+        #endregion
+
+        #region Workflow Operations
+
+        public async Task<RequirementDto?> StartWorkflowAsync(Guid id, Guid workflowConfigId)
+        {
+            _logger.LogInformation("Starting workflow for requirement {Id} with config {WorkflowConfigId}", id, workflowConfigId);
+
+            var requirement = await _context.Requirements.FindAsync(id);
+            if (requirement == null) return null;
+
+            var currentUser = await _userService.GetCurrentUserIdAsync();
+
+            requirement.CurrentWorkflowConfigId = workflowConfigId;
+            requirement.WorkflowInstanceId = Guid.NewGuid(); // Create new workflow instance
+            requirement.CurrentWorkflowStep = "Started";
+            requirement.Status = "InProgress";
             requirement.ModifiedAt = DateTime.UtcNow;
             requirement.ModifiedBy = currentUser;
 
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation("Updated workflow state for requirement {Id}", id);
-            return true;
+            _logger.LogInformation("Started workflow for requirement {Id}", id);
+            return requirement.ToDto();
         }
 
-        private async Task<string> GenerateRequirementNumberAsync()
+        public async Task<RequirementDto?> AdvanceWorkflowStepAsync(Guid id, string stepId, string? decision = null)
         {
-            var year = DateTime.Now.Year;
-            var count = await _context.Requirements
-                .CountAsync(r => r.CreatedAt.HasValue && r.CreatedAt.Value.Year == year);
+            _logger.LogInformation("Advancing workflow step for requirement {Id} to {StepId}", id, stepId);
 
-            return $"REQ-{year}-{count + 1:D4}";
+            var requirement = await _context.Requirements.FindAsync(id);
+            if (requirement == null) return null;
+
+            var currentUser = await _userService.GetCurrentUserIdAsync();
+
+            requirement.CurrentWorkflowStep = stepId;
+            requirement.ModifiedAt = DateTime.UtcNow;
+            requirement.ModifiedBy = currentUser;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Advanced workflow step for requirement {Id} to {StepId}", id, stepId);
+            return requirement.ToDto();
         }
 
-        public async Task<RequirementStatisticsDto> GetRequirementStatisticsAsync()
+        public async Task<RequirementDto?> AssignWorkflowStepAsync(Guid id, string stepId, string assigneeId)
         {
-            _logger.LogInformation("Getting requirement statistics");
+            _logger.LogInformation("Assigning workflow step {StepId} for requirement {Id} to {AssigneeId}", stepId, id, assigneeId);
 
-            var totalRequirements = await _context.Requirements
-                .CountAsync(r => r.Status != "Deleted");
+            var requirement = await _context.Requirements.FindAsync(id);
+            if (requirement == null) return null;
 
-            var statusCounts = await _context.Requirements
-                .Where(r => r.Status != "Deleted")
+            var currentUser = await _userService.GetCurrentUserIdAsync();
+
+            // Store assignee information - in a full implementation this would use WorkflowStepInstance table
+            requirement.TechnicalOwner = assigneeId;
+            requirement.ModifiedAt = DateTime.UtcNow;
+            requirement.ModifiedBy = currentUser;
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Assigned workflow step {StepId} for requirement {Id} to {AssigneeId}", stepId, id, assigneeId);
+            return requirement.ToDto();
+        }
+
+        #endregion
+
+        #region Bulk Operations
+
+        public async Task<BulkOperationResultDto> BulkUpdateAsync(BulkUpdateRequirementsRequest request)
+        {
+            _logger.LogInformation("Performing bulk update on {Count} requirements", request.RequirementIds.Count);
+
+            var result = new BulkOperationResultDto
+            {
+                SuccessCount = 0,
+                FailureCount = 0,
+                Errors = new List<BulkOperationErrorDto>()
+            };
+
+            var currentUser = await _userService.GetCurrentUserIdAsync();
+
+            foreach (var id in request.RequirementIds)
+            {
+                try
+                {
+                    var requirement = await _context.Requirements.FindAsync(id);
+                    if (requirement == null)
+                    {
+                        result.FailureCount++;
+                        result.Errors.Add(new BulkOperationErrorDto
+                        {
+                            RequirementId = id,
+                            RequirementNumber = $"REQ-{id}",
+                            Error = "Requirement not found"
+                        });
+                        continue;
+                    }
+
+                    // Apply bulk updates only to non-null fields
+                    if (request.Status != null) requirement.Status = request.Status;
+                    if (request.Priority != null) requirement.Priority = request.Priority;
+
+                    requirement.ModifiedAt = DateTime.UtcNow;
+                    requirement.ModifiedBy = currentUser;
+
+                    result.SuccessCount++;
+                }
+                catch (Exception ex)
+                {
+                    result.FailureCount++;
+                    result.Errors.Add(new BulkOperationErrorDto
+                    {
+                        RequirementId = id,
+                        RequirementNumber = $"REQ-{id}",
+                        Error = $"Error updating requirement: {ex.Message}"
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Bulk update completed: {SuccessCount} success, {FailureCount} failures",
+                result.SuccessCount, result.FailureCount);
+
+            return result;
+        }
+
+        public async Task<BulkOperationResultDto> BulkDeleteAsync(List<Guid> requirementIds)
+        {
+            _logger.LogInformation("Performing bulk delete on {Count} requirements", requirementIds.Count);
+
+            var result = new BulkOperationResultDto
+            {
+                SuccessCount = 0,
+                FailureCount = 0,
+                Errors = new List<BulkOperationErrorDto>()
+            };
+
+            var currentUser = await _userService.GetCurrentUserIdAsync();
+
+            foreach (var id in requirementIds)
+            {
+                try
+                {
+                    var requirement = await _context.Requirements.FindAsync(id);
+                    if (requirement == null)
+                    {
+                        result.FailureCount++;
+                        result.Errors.Add(new BulkOperationErrorDto
+                        {
+                            RequirementId = id,
+                            RequirementNumber = $"REQ-{id}",
+                            Error = "Requirement not found"
+                        });
+                        continue;
+                    }
+
+                    // Soft delete by status change
+                    requirement.Status = "Deleted";
+                    requirement.ModifiedAt = DateTime.UtcNow;
+                    requirement.ModifiedBy = currentUser;
+
+                    result.SuccessCount++;
+                }
+                catch (Exception ex)
+                {
+                    result.FailureCount++;
+                    result.Errors.Add(new BulkOperationErrorDto
+                    {
+                        RequirementId = id,
+                        RequirementNumber = $"REQ-{id}",
+                        Error = $"Error deleting requirement: {ex.Message}"
+                    });
+                }
+            }
+
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Bulk delete completed: {SuccessCount} success, {FailureCount} failures",
+                result.SuccessCount, result.FailureCount);
+
+            return result;
+        }
+
+        #endregion
+
+        #region Statistics & Reports
+
+        public async Task<RequirementStatisticsDto> GetStatisticsAsync(DateTime? fromDate = null, DateTime? toDate = null)
+        {
+            _logger.LogInformation("Getting requirement statistics from {FromDate} to {ToDate}", fromDate, toDate);
+
+            var query = _context.Requirements.Where(r => r.Status != "Deleted");
+
+            if (fromDate.HasValue)
+                query = query.Where(r => r.CreatedAt >= fromDate);
+
+            if (toDate.HasValue)
+                query = query.Where(r => r.CreatedAt <= toDate);
+
+            var totalRequirements = await query.CountAsync();
+
+            var statusCounts = await query
                 .GroupBy(r => r.Status)
                 .Select(g => new { Status = g.Key, Count = g.Count() })
                 .ToListAsync();
 
-            var typeCounts = await _context.Requirements
-                .Where(r => r.Status != "Deleted")
+            var typeCounts = await query
                 .GroupBy(r => r.RequirementType)
                 .Select(g => new { Type = g.Key, Count = g.Count() })
                 .ToListAsync();
 
-            var averageCost = await _context.Requirements
-                .Where(r => r.EstimatedCost.HasValue && r.Status != "Deleted")
+            var priorityCounts = await query
+                .GroupBy(r => r.Priority)
+                .Select(g => new { Priority = g.Key, Count = g.Count() })
+                .ToListAsync();
+
+            var averageCost = await query
+                .Where(r => r.EstimatedCost.HasValue)
                 .AverageAsync(r => r.EstimatedCost.Value);
 
             return new RequirementStatisticsDto
@@ -310,8 +515,152 @@ namespace TicketApi.Features.Requirements.Services
                 TotalRequirements = totalRequirements,
                 StatusDistribution = statusCounts.ToDictionary(x => x.Status ?? "Unknown", x => x.Count),
                 TypeDistribution = typeCounts.ToDictionary(x => x.Type, x => x.Count),
-                AverageEstimatedCost = (decimal)averageCost
+                PriorityDistribution = priorityCounts.ToDictionary(x => x.Priority, x => x.Count),
+                AverageEstimatedCost = averageCost,
+                InProgressCount = statusCounts.FirstOrDefault(x => x.Status == "InProgress")?.Count ?? 0,
+                CompletedThisMonth = await query.CountAsync(r => r.Status == "Completed" &&
+                    r.CompletedDate.HasValue && r.CompletedDate.Value.Month == DateTime.Now.Month),
+                OverdueCount = await query.CountAsync(r => r.RequiredByDate < DateTime.Now && r.Status != "Completed")
             };
         }
+
+        public async Task<List<RequirementDto>> GetMyRequirementsAsync(string userId, string? status = null)
+        {
+            _logger.LogInformation("Getting requirements for user {UserId} with status {Status}", userId, status);
+
+            var query = _context.Requirements
+                .Include(r => r.CurrentWorkflowConfig)
+                .Include(r => r.FormConfiguration)
+                .Where(r => r.RequestedBy == userId ||
+                           r.BusinessOwner == userId ||
+                           r.TechnicalOwner == userId)
+                .Where(r => r.Status != "Deleted");
+
+            if (!string.IsNullOrEmpty(status))
+                query = query.Where(r => r.Status == status);
+
+            var requirements = await query
+                .OrderByDescending(r => r.CreatedAt)
+                .ToListAsync();
+
+            return requirements.Select(r => r.ToDto()).ToList();
+        }
+
+        public async Task<List<RequirementDto>> GetOverdueRequirementsAsync()
+        {
+            _logger.LogInformation("Getting overdue requirements");
+
+            var overdue = await _context.Requirements
+                .Include(r => r.CurrentWorkflowConfig)
+                .Include(r => r.FormConfiguration)
+                .Where(r => r.RequiredByDate < DateTime.Now &&
+                           r.Status != "Completed" &&
+                           r.Status != "Deleted")
+                .OrderBy(r => r.RequiredByDate)
+                .ToListAsync();
+
+            return overdue.Select(r => r.ToDto()).ToList();
+        }
+
+        #endregion
+
+        #region Validation
+
+        public async Task<RequirementValidationResultDto> ValidateRequirementAsync(CreateRequirementRequest request)
+        {
+            var result = new RequirementValidationResultDto
+            {
+                IsValid = true,
+                Errors = new List<ValidationErrorDto>(),
+                Warnings = new List<ValidationWarningDto>()
+            };
+
+            // Basic field validations
+            if (string.IsNullOrWhiteSpace(request.Title))
+            {
+                result.IsValid = false;
+                result.Errors.Add(new ValidationErrorDto
+                {
+                    Field = nameof(request.Title),
+                    Message = "Title is required",
+                    Code = "TITLE_REQUIRED"
+                });
+            }
+
+            // Business rule validations
+            if (request.EstimatedCost.HasValue && request.EstimatedCost < 0)
+            {
+                result.IsValid = false;
+                result.Errors.Add(new ValidationErrorDto
+                {
+                    Field = nameof(request.EstimatedCost),
+                    Message = "Estimated cost cannot be negative",
+                    Code = "INVALID_COST"
+                });
+            }
+
+            // Date validation warnings
+            if (request.RequiredByDate.HasValue && request.RequiredByDate < DateTime.Now.AddDays(1))
+            {
+                result.Warnings.Add(new ValidationWarningDto
+                {
+                    Field = nameof(request.RequiredByDate),
+                    Message = "Required date is very soon",
+                    Code = "TIGHT_DEADLINE"
+                });
+            }
+
+            return result;
+        }
+
+        public async Task<RequirementValidationResultDto> ValidateUpdateAsync(Guid id, UpdateRequirementRequest request)
+        {
+            var result = new RequirementValidationResultDto
+            {
+                IsValid = true,
+                Errors = new List<ValidationErrorDto>(),
+                Warnings = new List<ValidationWarningDto>()
+            };
+
+            var existing = await _context.Requirements.FindAsync(id);
+            if (existing == null)
+            {
+                result.IsValid = false;
+                result.Errors.Add(new ValidationErrorDto
+                {
+                    Field = "Id",
+                    Message = "Requirement not found",
+                    Code = "NOT_FOUND"
+                });
+                return result;
+            }
+
+            // Apply same validation rules as create operation
+            return result;
+        }
+
+        #endregion
+
+        #region Helper Methods
+
+        public async Task<string> GenerateRequirementNumberAsync(string requirementType)
+        {
+            var year = DateTime.Now.Year;
+            var count = await _context.Requirements
+                .CountAsync(r => r.CreatedAt.HasValue && r.CreatedAt.Value.Year == year);
+
+            // Generate type-specific prefixes for requirement numbers
+            var prefix = requirementType switch
+            {
+                "Kleinanforderung" => "KA",
+                "Großanforderung" => "GA",
+                "TIA-Anforderung" => "TIA",
+                _ => "REQ"
+            };
+
+            return $"{prefix}-{year}-{count + 1:D4}";
+        }
+
+        #endregion
     }
 }

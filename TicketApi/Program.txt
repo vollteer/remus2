@@ -19,6 +19,8 @@ using TicketApi.Shared;
 using TicketApi.Shared.Infrastructure.Filters;
 using TicketApi.Shared.Models;
 using TicketApi.Shared.Models.Entities;
+using Microsoft.AspNetCore.Http.Json;
+using TicketApi.Features.Requirements.Services;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -47,6 +49,12 @@ var origins = "localhost";
 var modelBuilder = new ODataConventionModelBuilder();
 
 modelBuilder.EntitySet<Ticket>("Tickets");
+
+builder.Services.Configure<JsonOptions>(options =>
+{
+    options.SerializerOptions.PropertyNameCaseInsensitive = true;
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+});
 
 // filter controller using custom attribute
 builder.Services.AddControllers().AddJsonOptions(options => 
@@ -79,6 +87,8 @@ builder.Services.AddScoped<ITicketService, TicketService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IWorkflowService, WorkflowService>();
 builder.Services.AddScoped<IFormConfigurationService, FormConfigurationService>();
+builder.Services.AddScoped<IRequirementServices, RequirementService>();
+
 
 
 builder.Services.AddDbContext<RemusContext>(options =>
@@ -111,6 +121,7 @@ builder.Services.AddCors(options =>
                           //policy.WithOrigins("https://localhost:3245");
                           policy.AllowAnyOrigin();
                           policy.AllowAnyHeader();
+                          policy.AllowAnyMethod();
                       });
 });
 
