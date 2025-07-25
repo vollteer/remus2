@@ -9,6 +9,7 @@ import type {
 } from '../../../types';
 
 import { requirementsApi, type CreateRequirementRequest } from '~/services/api/requirements-api';
+import { WorkflowApiService } from '~/services/api/workflow-api-service';
 
 
 export default component$(() => {
@@ -16,6 +17,8 @@ export default component$(() => {
   const totalSteps = 4;
   const isSubmitting = useSignal(false);
   const availablePersons = useSignal<Person[]>([]);
+  const workflowError = useSignal<string | null>(null);
+  const isLoadingWorkflow = useSignal(false);
   
   // Form data
   const formData = useSignal({
@@ -47,74 +50,145 @@ export default component$(() => {
   });
 
   // Update workflow preview when type changes
-  useTask$(({ track }) => {
-    track(() => formData.value.type);
+  // useTask$(({ track }) => {
+  //   track(() => formData.value.type);
     
-    if (formData.value.type) {
-      // Mock workflow steps based on type
-      const workflows: Record<RequirementType, WorkflowStep[]> = {
-        'Kleinanforderung': [
-          { id: '1', name: 'Antrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Prüfung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Umsetzung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Abnahme', responsible: 'AG', order: 4, status: 'pending', assignee: undefined }
-        ],
-        'Großanforderung': [
-          { id: '1', name: 'Antrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Grobanalyse', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Feinkonzept', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Freigabe', responsible: 'AG', order: 4, status: 'pending', assignee: undefined },
-          { id: '5', name: 'Implementierung', responsible: 'AN', order: 5, status: 'pending', assignee: undefined },
-          { id: '6', name: 'Test', responsible: 'AN', order: 6, status: 'pending', assignee: undefined },
-          { id: '7', name: 'Abnahme', responsible: 'AG', order: 7, status: 'pending', assignee: undefined }
-        ],
-        'TIA-Anforderung': [
-          { id: '1', name: 'TIA-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Architektur Review', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Sicherheitsanalyse', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Implementierung', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
-          { id: '5', name: 'Security Test', responsible: 'AN', order: 5, status: 'pending', assignee: undefined },
-          { id: '6', name: 'Go-Live', responsible: 'AG', order: 6, status: 'pending', assignee: undefined }
-        ],
-        'Supportleistung': [
-          { id: '1', name: 'Support-Anfrage', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Analyse', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Lösung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Verifikation', responsible: 'AG', order: 4, status: 'pending', assignee: undefined }
-        ],
-        'Betriebsauftrag': [
-          { id: '1', name: 'Auftrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Planung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Durchführung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Dokumentation', responsible: 'AN', order: 4, status: 'pending', assignee: undefined }
-        ],
-        'SBBI-Lösung': [
-          { id: '1', name: 'SBBI-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Bewertung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Entwicklung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Integration', responsible: 'AN', order: 4, status: 'pending', assignee: undefined }
-        ],
-        'AWG-Release': [
-          { id: '1', name: 'Release-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'Release Planning', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Development', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Testing', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
-          { id: '5', name: 'Deployment', responsible: 'AN', order: 5, status: 'pending', assignee: undefined }
-        ],
-        'AWS-Release': [
-          { id: '1', name: 'AWS-Release Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
-          { id: '2', name: 'AWS Planning', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
-          { id: '3', name: 'Cloud Setup', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
-          { id: '4', name: 'Migration', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
-          { id: '5', name: 'Go-Live', responsible: 'AG', order: 5, status: 'pending', assignee: undefined }
-        ]
-      };
+  //   if (formData.value.type) {
+  //     // Mock workflow steps based on type
+  //     const workflows: Record<RequirementType, WorkflowStep[]> = {
+  //       'Kleinanforderung': [
+  //         { id: '1', name: 'Antrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Prüfung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Umsetzung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Abnahme', responsible: 'AG', order: 4, status: 'pending', assignee: undefined }
+  //       ],
+  //       'Großanforderung': [
+  //         { id: '1', name: 'Antrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Grobanalyse', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Feinkonzept', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Freigabe', responsible: 'AG', order: 4, status: 'pending', assignee: undefined },
+  //         { id: '5', name: 'Implementierung', responsible: 'AN', order: 5, status: 'pending', assignee: undefined },
+  //         { id: '6', name: 'Test', responsible: 'AN', order: 6, status: 'pending', assignee: undefined },
+  //         { id: '7', name: 'Abnahme', responsible: 'AG', order: 7, status: 'pending', assignee: undefined }
+  //       ],
+  //       'TIA-Anforderung': [
+  //         { id: '1', name: 'TIA-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Architektur Review', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Sicherheitsanalyse', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Implementierung', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
+  //         { id: '5', name: 'Security Test', responsible: 'AN', order: 5, status: 'pending', assignee: undefined },
+  //         { id: '6', name: 'Go-Live', responsible: 'AG', order: 6, status: 'pending', assignee: undefined }
+  //       ],
+  //       'Supportleistung': [
+  //         { id: '1', name: 'Support-Anfrage', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Analyse', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Lösung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Verifikation', responsible: 'AG', order: 4, status: 'pending', assignee: undefined }
+  //       ],
+  //       'Betriebsauftrag': [
+  //         { id: '1', name: 'Auftrag erstellen', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Planung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Durchführung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Dokumentation', responsible: 'AN', order: 4, status: 'pending', assignee: undefined }
+  //       ],
+  //       'SBBI-Lösung': [
+  //         { id: '1', name: 'SBBI-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Bewertung', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Entwicklung', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Integration', responsible: 'AN', order: 4, status: 'pending', assignee: undefined }
+  //       ],
+  //       'AWG-Release': [
+  //         { id: '1', name: 'Release-Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'Release Planning', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Development', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Testing', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
+  //         { id: '5', name: 'Deployment', responsible: 'AN', order: 5, status: 'pending', assignee: undefined }
+  //       ],
+  //       'AWS-Release': [
+  //         { id: '1', name: 'AWS-Release Antrag', responsible: 'AG', order: 1, status: 'current', assignee: undefined },
+  //         { id: '2', name: 'AWS Planning', responsible: 'AN', order: 2, status: 'pending', assignee: undefined },
+  //         { id: '3', name: 'Cloud Setup', responsible: 'AN', order: 3, status: 'pending', assignee: undefined },
+  //         { id: '4', name: 'Migration', responsible: 'AN', order: 4, status: 'pending', assignee: undefined },
+  //         { id: '5', name: 'Go-Live', responsible: 'AG', order: 5, status: 'pending', assignee: undefined }
+  //       ]
+  //     };
       
-      workflowPreview.value = workflows[formData.value.type] || [];
-    } else {
+  //     workflowPreview.value = workflows[formData.value.type] || [];
+  //   } else {
+  //     workflowPreview.value = [];
+  //   }
+  // });
+useTask$(async ({ track }) => {
+  track(() => formData.value.type);
+  
+  if (formData.value.type) {
+    isLoadingWorkflow.value = true;
+    workflowError.value = null;
+    workflowPreview.value = [];
+    
+    try {
+      console.log(`📥 Loading workflow: ${formData.value.type}`);
+      
+      // 🚀 ECHTER API-CALL über deinen services/api/workflow-api-service!
+      const workflowConfig = await WorkflowApiService.getWorkflowByType(formData.value.type);
+      
+      if (workflowConfig && workflowConfig.steps && workflowConfig.steps.length > 0) {
+        console.log('✅ Workflow steps loaded from API:', workflowConfig.steps);
+        
+        // Convert deine Backend-Steps zu Frontend-Format
+        const frontendSteps = workflowConfig.steps.map((step, index) => ({
+          id: step.id,
+          name: step.title, // Backend: "title" → Frontend: "name"
+          responsible: step.responsible,
+          order: step.order || (index + 1),
+          status: step.order === 1 ? 'current' : 'pending', // Erster Step ist current
+          assignee: undefined,
+          estimatedDays: step.estimatedDays || 1
+        }));
+        
+        workflowPreview.value = frontendSteps;
+        console.log('🎯 Converted to frontend format:', frontendSteps);
+        
+      } else {
+        // 🚨 KEINE MOCK-DATEN! Ehrliche Fehlermeldung:
+        workflowError.value = `Kein Workflow für "${formData.value.type}" konfiguriert. Bitte kontaktieren Sie den Administrator.`;
+        workflowPreview.value = [];
+        console.warn('⚠️ No workflow configuration found for type:', formData.value.type);
+      }
+      
+    } catch (error) {
+      console.error('💥 Error loading workflow:', error);
+      
+      // 🚨 ECHTER FEHLER - Keine Mock-Daten!
+      if (error instanceof Error) {
+        if (error.message.includes('404') || error.message.includes('not found')) {
+          workflowError.value = `Workflow-Typ "${formData.value.type}" existiert nicht in der Datenbank.`;
+        } else if (error.message.includes('500') || error.message.includes('Internal server error')) {
+          workflowError.value = `Server-Fehler beim Laden des Workflows. Bitte versuchen Sie es später erneut.`;
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('Network')) {
+          workflowError.value = `Verbindung zum Server fehlgeschlagen. Prüfen Sie Ihre Internetverbindung.`;
+        } else if (error.message.includes('timeout')) {
+          workflowError.value = `Timeout beim Laden des Workflows. Server antwortet nicht.`;
+        } else {
+          workflowError.value = `Fehler beim Laden des Workflows: ${error.message}`;
+        }
+      } else {
+        workflowError.value = `Unbekannter Fehler beim Laden des Workflows.`;
+      }
+      
       workflowPreview.value = [];
+    } finally {
+      isLoadingWorkflow.value = false;
     }
-  });
+  } else {
+    // Kein Type gewählt - Reset
+    workflowPreview.value = [];
+    workflowError.value = null;
+    isLoadingWorkflow.value = false;
+  }
+});
+
+
 
   const nextStep = $(() => {
     if (currentStep.value < totalSteps) {
@@ -128,15 +202,89 @@ export default component$(() => {
     }
   });
 
+// const submitForm = $(async () => {
+//   isSubmitting.value = true;
+  
+//   try {
+//     // Prepare request data (mapping zu deinem Backend DTO)
+//     const requestData: CreateRequirementRequest = {
+//       title: formData.value.title,
+//       type: formData.value.type as string,
+//       realizationObject: formData.value.realizationObject as string,
+//       priority: formData.value.priority,
+//       initialSituation: formData.value.initialSituation,
+//       goals: formData.value.goals,
+//       budget: formData.value.budget,
+//       functionalContact: formData.value.functionalContact,
+//       systemResponsible: formData.value.systemResponsible,
+//       dueDate: formData.value.dueDate,
+//       formData: {
+//         ...formData.value,
+//         timestamp: new Date().toISOString(),
+//         userAgent: typeof window !== 'undefined' ? window.navigator.userAgent : 'unknown'
+//       }
+//     };
+
+//     console.log('📤 Creating requirement:', requestData);
+
+//     // 🚀 ECHTER API-CALL STATT MOCK!
+//     const result = await requirementsApi.createRequirement(requestData);
+    
+//     if (result.success && result.data) {
+//       console.log('✅ Requirement created successfully:', result.data);
+      
+//       // Show success message (SSR-safe)
+//       if (typeof window !== 'undefined') {
+//         alert(`🎉 ${result.message}\n\nAnforderungs-Nr.: ${result.data.requirementNumber}`);
+        
+//         // Optional: Redirect to the new requirement
+//         // window.location.href = `/requirements/${result.data.id}`;
+//       }
+      
+//     } else {
+//       // Handle API error
+//       console.error('❌ Failed to create requirement:', result);
+//       const errorMessage = result.message || 'Unbekannter Fehler beim Erstellen der Anforderung';
+      
+//       if (typeof window !== 'undefined') {
+//         alert(`❌ Fehler: ${errorMessage}\n\nDetails: ${result.errors?.join(', ') || 'Keine Details verfügbar'}`);
+//       }
+//     }
+    
+//   } catch (error) {
+//     console.error('💥 Unexpected error creating requirement:', error);
+    
+//     if (typeof window !== 'undefined') {
+//       alert(`💥 Unerwarteter Fehler: ${error instanceof Error ? error.message : 'Unbekannter Fehler'}`);
+//     }
+//   } finally {
+//     isSubmitting.value = false;
+//   }
+// });
 const submitForm = $(async () => {
+  // 🚨 Validierung: Workflow muss geladen sein!
+  if (workflowError.value) {
+    if (typeof window !== 'undefined') {
+      alert(`❌ Kann Anforderung nicht erstellen:\n\n${workflowError.value}\n\nBitte beheben Sie den Workflow-Fehler zuerst.`);
+    }
+    return;
+  }
+  
+  if (workflowPreview.value.length === 0) {
+    if (typeof window !== 'undefined') {
+      alert('❌ Kann Anforderung nicht erstellen:\n\nKein Workflow für diesen Typ verfügbar.');
+    }
+    return;
+  }
+  
   isSubmitting.value = true;
   
   try {
-    // Prepare request data
+    // Prepare request data (mapping zu deinem Backend DTO)
     const requestData: CreateRequirementRequest = {
       title: formData.value.title,
-      type: formData.value.type,
-      realizationObject: formData.value.realizationObject,
+      type: formData.value.type as string,
+      realizationObject: formData.value.realizationObject as string,
       priority: formData.value.priority,
       initialSituation: formData.value.initialSituation,
       goals: formData.value.goals,
@@ -153,7 +301,7 @@ const submitForm = $(async () => {
 
     console.log('📤 Creating requirement:', requestData);
 
-    // Call real API
+    // 🚀 ECHTER API-CALL STATT MOCK!
     const result = await requirementsApi.createRequirement(requestData);
     
     if (result.success && result.data) {
@@ -161,11 +309,10 @@ const submitForm = $(async () => {
       
       // Show success message (SSR-safe)
       if (typeof window !== 'undefined') {
-        // Option 1: Use alert (simple)
-        alert(`🎉 ${result.message}\n\nAnforderungs-Nr.: ${result.data.requirementNumber}`);
+        alert(`🎉 ${result.message}\n\nAnforderungs-Nr.: ${result.data.requirementNumber}\n\nWorkflow "${formData.value.type}" wurde gestartet mit ${workflowPreview.value.length} Schritten.`);
         
-        // Option 2: Or redirect to the new requirement
-        window.location.href = `/requirements/${result.data.id}`;
+        // Optional: Redirect to the new requirement
+        // window.location.href = `/requirements/${result.data.id}`;
       }
       
     } else {
@@ -188,6 +335,8 @@ const submitForm = $(async () => {
     isSubmitting.value = false;
   }
 });
+
+
 
   const getStepTitle = (step: number) => {
     const titles = {

@@ -1,68 +1,111 @@
+// frontend/src/services/api/requirements-api.ts
+// Korrigierte Version für dein Backend
+
 export interface CreateRequirementRequest {
   title: string;
-  type: string;
-  realizationObject: string;
+  description?: string;
+  requirementType: string; // Nicht "type" - Backend erwartet "requirementType"
   priority: string;
-  initialSituation: string;
-  goals: string;
-  budget?: number;
-  functionalContact?: {
-    id: string;
-    name: string;
-    department: string;
-  } | null;
-  systemResponsible?: {
-    id: string;
-    name: string;
-    department: string;
-  } | null;
-  dueDate?: string;
-  formData?: Record<string, any>;
+  businessOwner?: string;
+  technicalOwner?: string;
+  department?: string;
+  costCenter?: string;
+  estimatedCost?: number;
+  approvedBudget?: number;
+  currency?: string;
+  requiredByDate?: string; // Backend erwartet "requiredByDate" nicht "dueDate"
+  startDate?: string;
+  formConfigurationId?: string;
+  hasPersonalData?: boolean;
+  securityClassification?: string;
+  formData?: string; // JSON String, nicht Object
 }
 
 export interface RequirementResponse {
   id: string;
   requirementNumber: string;
   title: string;
-  type: string;
-  status: string;
+  description?: string;
+  requirementType: string;
   priority: string;
-  createdAt: string;
+  status: string;
+  requestedBy: string;
+  businessOwner?: string;
+  technicalOwner?: string;
+  department?: string;
+  costCenter?: string;
+  estimatedCost?: number;
+  approvedBudget?: number;
+  actualCost?: number;
+  currency: string;
+  requestedDate?: string;
+  requiredByDate?: string;
+  startDate?: string;
+  completedDate?: string;
+  currentWorkflowConfigId?: string;
+  currentWorkflowStep?: string;
+  workflowInstanceId?: string;
+  formConfigurationId?: string;
+  formData?: string;
+  hasPersonalData?: boolean;
+  securityClassification: string;
+  createdAt?: string;
+  modifiedAt?: string;
   createdBy: string;
-  // ... weitere Felder
+  modifiedBy?: string;
+  
+  // Navigation Properties die noch in deinem RequirementDto fehlen!
+  workflowConfigName?: string;
+  formConfigName?: string;
+  attachmentCount: number;
+  commentCount: number;
 }
 
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  message?: string;
-  errors?: string[];
+export interface RequirementQueryRequest {
+  requirementType?: string;
+  status?: string;
+  priority?: string;
+  department?: string;
+  searchText?: string;
+  createdFrom?: string;
+  createdTo?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortDirection?: string;
 }
+
+export interface PagedResult<T> {
+  items: T[];
+  totalCount: number;
+  pageNumber: number;
+  pageSize: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+}
+
+// Backend gibt direkt DTOs zurück, kein Wrapper
+// Kein ApiResponse<T> wrapper needed, da dein Controller direkt DTOs zurückgibt
 
 class RequirementsApiService {
   private readonly BASE_URL = 'https://localhost:7068/api/requirements';
 
-  async createRequirement(request: CreateRequirementRequest): Promise<ApiResponse<RequirementResponse>> {
+  private getHeaders(): HeadersInit {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    };
+  }
+
+  async createRequirement(request: CreateRequirementRequest): Promise<RequirementResponse> {
     try {
+      console.log('Creating requirement:', request);
+      
       const response = await fetch(`${this.BASE_URL}`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          title: request.title,
-          requirementType: request.type,
-          realizationObject: request.realizationObject,
-          priority: request.priority,
-          initialSituation: request.initialSituation,
-          goals: request.goals,
-          estimatedBudget: request.budget,
-          functionalContactId: request.functionalContact?.id,
-          systemResponsibleId: request.systemResponsible?.id,
-          requestedDueDate: request.dueDate,
-          formData: JSON.stringify(request.formData || {})
-        })
+        headers: this.getHeaders(),
+        body: JSON.stringify(request) // Direkt das Request Object senden
       });
 
       if (!response.ok) {
@@ -70,178 +113,209 @@ class RequirementsApiService {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
+      // Backend gibt direkt RequirementDto zurück, kein Wrapper
+      const data: RequirementResponse = await response.json();
+      console.log('Successfully created requirement:', data);
       
-      return {
-        success: true,
-        data: data,
-        message: 'Anforderung erfolgreich erstellt'
-      };
+      return data;
       
     } catch (error) {
       console.error('Error creating requirement:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Unbekannter Fehler beim Erstellen',
-        errors: [error instanceof Error ? error.message : 'Unbekannter Fehler']
-      };
+      throw error; // Re-throw für Component Error Handling
     }
   }
 
-  async getRequirement(id: string): Promise<ApiResponse<RequirementResponse>> {
+  async getRequirement(id: string): Promise<RequirementResponse> {
     try {
+      console.log(`Getting requirement: ${id}`);
+      
       const response = await fetch(`${this.BASE_URL}/${id}`, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: this.getHeaders()
       });
 
       if (!response.ok) {
         if (response.status === 404) {
           throw new Error('Anforderung nicht gefunden');
         }
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
+      const data: RequirementResponse = await response.json();
+      console.log('Successfully loaded requirement:', data);
       
-      return {
-        success: true,
-        data: data
-      };
+      return data;
       
     } catch (error) {
       console.error('Error fetching requirement:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Fehler beim Laden der Anforderung',
-        errors: [error instanceof Error ? error.message : 'Unbekannter Fehler']
-      };
+      throw error;
     }
   }
 
-  async getRequirements(filters?: {
-    type?: string;
-    status?: string;
-    priority?: string;
-    createdBy?: string;
-    page?: number;
-    pageSize?: number;
-  }): Promise<ApiResponse<RequirementResponse[]>> {
+  async getRequirements(queryRequest: RequirementQueryRequest = {}): Promise<PagedResult<RequirementResponse>> {
     try {
-      // Build query string
+      console.log('Getting requirements with query:', queryRequest);
+      
+      // Build query string aus RequirementQueryRequest
       const queryParams = new URLSearchParams();
-      if (filters?.type) queryParams.append('type', filters.type);
-      if (filters?.status) queryParams.append('status', filters.status);
-      if (filters?.priority) queryParams.append('priority', filters.priority);
-      if (filters?.createdBy) queryParams.append('createdBy', filters.createdBy);
-      if (filters?.page) queryParams.append('page', filters.page.toString());
-      if (filters?.pageSize) queryParams.append('pageSize', filters.pageSize.toString());
+      if (queryRequest.requirementType) queryParams.append('requirementType', queryRequest.requirementType);
+      if (queryRequest.status) queryParams.append('status', queryRequest.status);
+      if (queryRequest.priority) queryParams.append('priority', queryRequest.priority);
+      if (queryRequest.department) queryParams.append('department', queryRequest.department);
+      if (queryRequest.searchText) queryParams.append('searchText', queryRequest.searchText);
+      if (queryRequest.createdFrom) queryParams.append('createdFrom', queryRequest.createdFrom);
+      if (queryRequest.createdTo) queryParams.append('createdTo', queryRequest.createdTo);
+      if (queryRequest.page) queryParams.append('page', queryRequest.page.toString());
+      if (queryRequest.pageSize) queryParams.append('pageSize', queryRequest.pageSize.toString());
+      if (queryRequest.sortBy) queryParams.append('sortBy', queryRequest.sortBy);
+      if (queryRequest.sortDirection) queryParams.append('sortDirection', queryRequest.sortDirection);
 
-      const url = `${this.BASE_URL}${queryParams.toString() ? '?' + queryParams.toString() : ''}`;
+      const url = `${this.BASE_URL}?${queryParams.toString()}`;
+      console.log('Request URL:', url);
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: this.getHeaders()
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
+      // Backend gibt PagedResultDto<RequirementDto> zurück
+      const data: PagedResult<RequirementResponse> = await response.json();
+      console.log(`Successfully loaded ${data.items.length} requirements`);
       
-      return {
-        success: true,
-        data: Array.isArray(data) ? data : data.items || []
-      };
+      return data;
       
     } catch (error) {
       console.error('Error fetching requirements:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Fehler beim Laden der Anforderungen',
-        errors: [error instanceof Error ? error.message : 'Unbekannter Fehler'],
-        data: []
-      };
+      throw error;
     }
   }
 
-  async updateRequirement(id: string, updates: Partial<CreateRequirementRequest>): Promise<ApiResponse<RequirementResponse>> {
+  async updateRequirement(id: string, updates: Partial<CreateRequirementRequest>): Promise<RequirementResponse> {
     try {
+      console.log(`Updating requirement ${id}:`, updates);
+      
       const response = await fetch(`${this.BASE_URL}/${id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify({
-          ...(updates.title && { title: updates.title }),
-          ...(updates.type && { requirementType: updates.type }),
-          ...(updates.realizationObject && { realizationObject: updates.realizationObject }),
-          ...(updates.priority && { priority: updates.priority }),
-          ...(updates.initialSituation && { initialSituation: updates.initialSituation }),
-          ...(updates.goals && { goals: updates.goals }),
-          ...(updates.budget !== undefined && { estimatedBudget: updates.budget }),
-          ...(updates.functionalContact && { functionalContactId: updates.functionalContact.id }),
-          ...(updates.systemResponsible && { systemResponsibleId: updates.systemResponsible.id }),
-          ...(updates.dueDate && { requestedDueDate: updates.dueDate }),
-          ...(updates.formData && { formData: JSON.stringify(updates.formData) })
-        })
+        headers: this.getHeaders(),
+        body: JSON.stringify(updates)
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      const data = await response.json();
+      const data: RequirementResponse = await response.json();
+      console.log('Successfully updated requirement:', data);
       
-      return {
-        success: true,
-        data: data,
-        message: 'Anforderung erfolgreich aktualisiert'
-      };
+      return data;
       
     } catch (error) {
       console.error('Error updating requirement:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Fehler beim Aktualisieren',
-        errors: [error instanceof Error ? error.message : 'Unbekannter Fehler']
-      };
+      throw error;
     }
   }
 
-  async deleteRequirement(id: string): Promise<ApiResponse<void>> {
+  async deleteRequirement(id: string): Promise<boolean> {
     try {
+      console.log(`Deleting requirement: ${id}`);
+      
       const response = await fetch(`${this.BASE_URL}/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Accept': 'application/json'
-        }
+        headers: this.getHeaders()
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
-      
-      return {
-        success: true,
-        message: 'Anforderung erfolgreich gelöscht'
-      };
+
+      console.log(`Successfully deleted requirement: ${id}`);
+      return true;
       
     } catch (error) {
       console.error('Error deleting requirement:', error);
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'Fehler beim Löschen',
-        errors: [error instanceof Error ? error.message : 'Unbekannter Fehler']
-      };
+      throw error;
     }
+  }
+
+  // Workflow Steps für Requirements Form (nutzt deinen bestehenden Workflow Controller)
+  async getWorkflowStepsForRequirementType(requirementType: string): Promise<Array<{id: string, name: string, responsible: string}>> {
+    try {
+      console.log(`Getting workflow steps for: ${requirementType}`);
+      
+      // Nutze deinen WorkflowController!
+      const response = await fetch(`https://localhost:7068/api/workflow/configuration/${requirementType}`, {
+        method: 'GET',
+        headers: this.getHeaders()
+      });
+
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`No workflow found for requirement type: ${requirementType}`);
+          return this.getFallbackWorkflowSteps(requirementType);
+        }
+        throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+      }
+
+      const workflowConfig = await response.json();
+      console.log('Successfully loaded workflow config:', workflowConfig);
+      
+      // Extract steps from WorkflowConfigurationDto
+      if (workflowConfig.steps && Array.isArray(workflowConfig.steps)) {
+        return workflowConfig.steps.map((step: any) => ({
+          id: step.id,
+          name: step.title,
+          responsible: step.responsible,
+          estimatedDays: step.estimatedDays,
+          order: step.order
+        }));
+      }
+
+      return this.getFallbackWorkflowSteps(requirementType);
+      
+    } catch (error) {
+      console.error('Error getting workflow steps, using fallback:', error);
+      return this.getFallbackWorkflowSteps(requirementType);
+    }
+  }
+
+  // Fallback wenn kein Workflow in DB gefunden wird
+  private getFallbackWorkflowSteps(requirementType: string): Array<{id: string, name: string, responsible: string}> {
+    const workflows: Record<string, Array<{id: string, name: string, responsible: string}>> = {
+      'Kleinanforderung': [
+        { id: '1', name: 'Antrag', responsible: 'AG' },
+        { id: '2', name: 'Prüfung', responsible: 'AN' },
+        { id: '3', name: 'Umsetzung', responsible: 'AN' },
+        { id: '4', name: 'Test', responsible: 'AN' },
+        { id: '5', name: 'Abschluss', responsible: 'AG' }
+      ],
+      'Großanforderung': [
+        { id: '1', name: 'Antrag', responsible: 'AG' },
+        { id: '2', name: 'Analyse', responsible: 'AN' },
+        { id: '3', name: 'Konzept', responsible: 'AN' },
+        { id: '4', name: 'Entwicklung', responsible: 'AN' },
+        { id: '5', name: 'Test', responsible: 'AN' },
+        { id: '6', name: 'Deployment', responsible: 'AN' }
+      ],
+      'AWS-Release': [
+        { id: '1', name: 'AWS-Release Antrag', responsible: 'AG' },
+        { id: '2', name: 'AWS Planning', responsible: 'AN' },
+        { id: '3', name: 'Cloud Setup', responsible: 'AN' },
+        { id: '4', name: 'Migration', responsible: 'AN' },
+        { id: '5', name: 'Go-Live', responsible: 'AG' }
+      ]
+    };
+
+    return workflows[requirementType] || workflows['Kleinanforderung'];
   }
 }
 
+// Singleton Export
 export const requirementsApi = new RequirementsApiService();
