@@ -1,39 +1,53 @@
-
-const API_BASE_URL = 'https://localhost:7068/api/workflow'; 
-
 // =======================================================
-// BACKEND DTOs (exakt wie dein Controller sie liefert)
+// src/services/api/workflow-api-service.ts
+// 🔗 Echter API Service für deinen WorkflowController
 // =======================================================
+
+const API_BASE_URL = 'https://localhost:7068/api/workflow';
+
+// ================ BACKEND DTO INTERFACES ================
+
+interface WorkflowConfigurationDto {
+  id: string;
+  type: string;
+  name: string;
+  description?: string;
+  steps: WorkflowStepDto[];
+  isActive: boolean;
+  version: number;
+  createdAt: string;
+  modifiedAt: string;
+  createdBy: string;
+}
+
 interface WorkflowStepDto {
   id: string;
   title: string;
-  type: string; // 'TASK', 'REVIEW', 'APPROVAL', etc.
-  responsible: string; // 'AG', 'AN', 'SYSTEM', etc.
-  description?: string;
+  type: 'TASK' | 'APPROVAL' | 'DECISION' | 'NOTIFICATION' | 'WAIT';
+  responsible: 'AG' | 'AN' | 'SYSTEM' | 'BOTH';
+  description: string;
   estimatedDays: number;
-  order: number;
   required: boolean;
+  conditions: string[];
+  order: number;
+  isParallel?: boolean;
+  parallelGroup?: string;
+  parallelPosition?: number;
 }
 
-interface WorkflowMetadataDto {
-  version: string;
-  createdBy: string;
-  totalEstimatedDays: number;
-}
-
-interface WorkflowConfigurationDto {
-  id?: string;
+interface CreateWorkflowConfigurationDto {
+  type: string;
   name: string;
-  type: string; // Das ist der requirementType
   description?: string;
-  isActive: boolean;
-  version: number;
-  createdAt?: string;
-  modifiedAt?: string;
-  createdBy?: string;
-  modifiedBy?: string;
   steps: WorkflowStepDto[];
-  metadata: WorkflowMetadataDto;
+  isActive: boolean;
+}
+
+interface UpdateWorkflowConfigurationDto {
+  name: string;
+  description?: string;
+  steps: WorkflowStepDto[];
+  isActive: boolean;
 }
 
 interface WorkflowValidationResultDto {
@@ -42,225 +56,135 @@ interface WorkflowValidationResultDto {
   warnings: string[];
 }
 
-// =======================================================
-// FRONTEND TYPES (deine bestehenden aus workflow-designer.tsx)
-// =======================================================
-export interface WorkflowStep {
-  id: string;
-  title: string;
-  type: 'task' | 'approval' | 'decision' | 'notification' | 'wait' | 'parallel' | 'merge';
-  responsible: 'AG' | 'AN' | 'SYSTEM' | 'BOTH' | 'DYNAMIC';
-  description: string;
-  estimatedDays: number;
-  required: boolean;
-  conditions: StepCondition[];
-  order: number;
-  permissions?: StepPermissions;
-  branches?: StepBranch[];
-  formBinding?: string;
-  autoAssign?: boolean;
-  escalation?: {
-    enabled: boolean;
-    afterDays: number;
-    escalateTo: string[];
-  };
-  notifications?: {
-    onStart: boolean;
-    onComplete: boolean;
-    onOverdue: boolean;
-    recipients: string[];
-  };
-}
+// ================ MAPPING FUNCTIONS ================
 
-export interface StepCondition {
-  field: string;
-  operator: 'equals' | 'notEquals' | 'contains' | 'isEmpty' | 'isNotEmpty' | 'greaterThan' | 'lessThan' | 'in' | 'notIn';
-  value?: string | number | boolean | string[];
-  action: 'show' | 'hide' | 'require' | 'skip' | 'branch';
-}
-
-export interface StepBranch {
-  condition: string;
-  targetStepId: string;
-  label: string;
-  description?: string;
-}
-
-export interface StepPermissions {
-  allowedRoles: string[];
-  allowedUsers: string[];
-  denyRoles?: string[];
-  requiresRole?: string;
-  requiresAllRoles?: string[];
-  requiresAnyRoles?: string[];
-}
-
-export interface WorkflowConfiguration {
-  id: string;
-  type: string;
-  name: string;
-  description?: string;
-  steps: WorkflowStep[];
-  isActive: boolean;
-  version: number;
-  createdAt: string;
-  modifiedAt: string;
-  createdBy: string;
-}
-
-// =======================================================
-// MAPPING ZWISCHEN BACKEND DTO ↔ FRONTEND MODEL
-// =======================================================
 class WorkflowMapper {
   
-  // Backend DTO → Frontend Model
-  static mapDtoToFrontend(dto: WorkflowConfigurationDto): WorkflowConfiguration {
+  // DTO → Frontend Model
+  static mapDtoToFrontend(dto: WorkflowConfigurationDto): any {
     return {
-      id: dto.id || '',
+      id: dto.id,
       type: dto.type,
       name: dto.name,
       description: dto.description,
+      steps: dto.steps?.map(step => ({
+        id: step.id,
+        title: step.title,
+        type: step.type.toLowerCase() as any,
+        responsible: step.responsible,
+        description: step.description,
+        estimatedDays: step.estimatedDays,
+        required: step.required,
+        conditions: step.conditions || [],
+        order: step.order,
+        isParallel: step.isParallel || false,
+        parallelGroup: step.parallelGroup,
+        parallelPosition: step.parallelPosition || 0,
+        // Default values for additional frontend properties
+        permissions: { allowedRoles: ['Requester', 'TechnicalLead'], allowedUsers: [] },
+        branches: [],
+        autoAssign: false,
+        notifications: {
+          onStart: false,
+          onComplete: false,
+          onOverdue: false,
+          recipients: []
+        }
+      })) || [],
       isActive: dto.isActive,
       version: dto.version,
-      createdAt: dto.createdAt || new Date().toISOString(),
-      modifiedAt: dto.modifiedAt || new Date().toISOString(),
-      createdBy: dto.createdBy || 'system',
-      steps: this.mapStepsToFrontend(dto.steps || [])
+      createdAt: dto.createdAt,
+      modifiedAt: dto.modifiedAt,
+      createdBy: dto.createdBy
     };
   }
 
-  // Frontend Model → Backend DTO  
-  static mapFrontendToDto(config: WorkflowConfiguration): WorkflowConfigurationDto {
+  // Frontend Model → DTO
+  static mapFrontendToDto(config: any): WorkflowConfigurationDto {
     return {
-      id: config.id || undefined,
-      name: config.name,
+      id: config.id,
       type: config.type,
+      name: config.name,
       description: config.description,
+      steps: config.steps.map((step: any) => ({
+        id: step.id,
+        title: step.title,
+        type: step.type.toUpperCase() as any,
+        responsible: step.responsible,
+        description: step.description,
+        estimatedDays: step.estimatedDays,
+        required: step.required,
+        conditions: step.conditions,
+        order: step.order,
+        isParallel: step.isParallel || false,
+        parallelGroup: step.parallelGroup,
+        parallelPosition: step.parallelPosition || 0
+      })),
       isActive: config.isActive,
       version: config.version,
       createdAt: config.createdAt,
       modifiedAt: config.modifiedAt,
-      createdBy: config.createdBy,
-      modifiedBy: config.createdBy,
-      steps: this.mapStepsToDto(config.steps),
-      metadata: {
-        version: '1.0',
-        createdBy: config.createdBy,
-        totalEstimatedDays: config.steps.reduce((sum, step) => sum + step.estimatedDays, 0)
-      }
+      createdBy: config.createdBy
     };
   }
 
-  // Backend Steps → Frontend Steps
-  private static mapStepsToFrontend(dtoSteps: WorkflowStepDto[]): WorkflowStep[] {
-    return dtoSteps.map(step => ({
-      id: step.id,
-      title: step.title,
-      type: this.mapStepTypeToFrontend(step.type),
-      responsible: this.mapResponsibleToFrontend(step.responsible),
-      description: step.description || '',
-      estimatedDays: step.estimatedDays,
-      required: step.required,
-      conditions: [], // Default leer
-      order: step.order,
-      permissions: {
-        allowedRoles: [],
-        allowedUsers: [],
-        denyRoles: []
-      },
-      branches: [],
-      formBinding: undefined,
-      autoAssign: false,
-      escalation: {
-        enabled: false,
-        afterDays: 7,
-        escalateTo: []
-      },
-      notifications: {
-        onStart: false,
-        onComplete: false,
-        onOverdue: false,
-        recipients: []
-      }
-    }));
+  // Create DTO für neue Workflows
+  static mapFrontendToCreateDto(config: any): CreateWorkflowConfigurationDto {
+    return {
+      type: config.type,
+      name: config.name,
+      description: config.description,
+      steps: config.steps.map((step: any) => ({
+        id: step.id,
+        title: step.title,
+        type: step.type.toUpperCase() as any,
+        responsible: step.responsible,
+        description: step.description,
+        estimatedDays: step.estimatedDays,
+        required: step.required,
+        conditions: step.conditions,
+        order: step.order,
+        isParallel: step.isParallel || false,
+        parallelGroup: step.parallelGroup,
+        parallelPosition: step.parallelPosition || 0
+      })),
+      isActive: config.isActive
+    };
   }
 
-  // Frontend Steps → Backend Steps
-  private static mapStepsToDto(frontendSteps: WorkflowStep[]): WorkflowStepDto[] {
-    return frontendSteps.map(step => ({
-      id: step.id,
-      title: step.title,
-      type: this.mapStepTypeToBackend(step.type),
-      responsible: this.mapResponsibleToBackend(step.responsible),
-      description: step.description,
-      estimatedDays: step.estimatedDays,
-      order: step.order,
-      required: step.required
-    }));
-  }
-
-  // Type Mapping Helpers
-  private static mapStepTypeToFrontend(backendType: string): WorkflowStep['type'] {
-    switch (backendType.toUpperCase()) {
-      case 'TASK': return 'task';
-      case 'REVIEW': 
-      case 'APPROVAL': return 'approval';
-      case 'DECISION': return 'decision';
-      case 'NOTIFICATION': return 'notification';
-      case 'WAIT': return 'wait';
-      case 'PARALLEL': return 'parallel';
-      case 'MERGE': return 'merge';
-      default: return 'task';
-    }
-  }
-
-  private static mapStepTypeToBackend(frontendType: WorkflowStep['type']): string {
-    switch (frontendType) {
-      case 'task': return 'TASK';
-      case 'approval': return 'APPROVAL';
-      case 'decision': return 'REVIEW';
-      case 'notification': return 'NOTIFICATION';
-      case 'wait': return 'WAIT';
-      case 'parallel': return 'PARALLEL';
-      case 'merge': return 'MERGE';
-      default: return 'TASK';
-    }
-  }
-
-  private static mapResponsibleToFrontend(backendResponsible: string): WorkflowStep['responsible'] {
-    switch (backendResponsible) {
-      case 'AG': return 'AG';
-      case 'AN': return 'AN';
-      case 'SYSTEM': return 'SYSTEM';
-      case 'BOTH': return 'BOTH';
-      case 'DYNAMIC': return 'DYNAMIC';
-      default: return 'SYSTEM';
-    }
-  }
-
-  private static mapResponsibleToBackend(frontendResponsible: WorkflowStep['responsible']): string {
-    switch (frontendResponsible) {
-      case 'AG': return 'AG';
-      case 'AN': return 'AN';
-      case 'SYSTEM': return 'SYSTEM';
-      case 'BOTH': return 'BOTH';
-      case 'DYNAMIC': return 'DYNAMIC';
-      default: return 'SYSTEM';
-    }
+  // Update DTO für bestehende Workflows
+  static mapFrontendToUpdateDto(config: any): UpdateWorkflowConfigurationDto {
+    return {
+      name: config.name,
+      description: config.description,
+      steps: config.steps.map((step: any) => ({
+        id: step.id,
+        title: step.title,
+        type: step.type.toUpperCase() as any,
+        responsible: step.responsible,
+        description: step.description,
+        estimatedDays: step.estimatedDays,
+        required: step.required,
+        conditions: step.conditions,
+        order: step.order,
+        isParallel: step.isParallel || false,
+        parallelGroup: step.parallelGroup,
+        parallelPosition: step.parallelPosition || 0
+      })),
+      isActive: config.isActive
+    };
   }
 }
 
-// =======================================================
-// API SERVICE (nutzt deinen bestehenden Controller!)
-// =======================================================
+// ================ API SERVICE CLASS ================
+
 export class WorkflowApiService {
   
-  // 🎯 HAUPTMETHODE: Nutzt deine GetWorkflowByType Controller-Methode
-  static async getWorkflowByType(workflowType: string): Promise<WorkflowConfiguration | null> {
+  // 🎯 GET /api/workflow/configuration/{workflowType}
+  static async getWorkflowByType(workflowType: string): Promise<any | null> {
     try {
       console.log(`[API] Loading workflow for type: ${workflowType}`);
       
-      // API Call zu deinem WorkflowController.GetWorkflowByType
       const response = await fetch(`${API_BASE_URL}/configuration/${encodeURIComponent(workflowType)}`);
       
       if (response.status === 404) {
@@ -272,11 +196,9 @@ export class WorkflowApiService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      // Dein Controller liefert WorkflowConfigurationDto
       const dto: WorkflowConfigurationDto = await response.json();
       console.log('[API] Controller response DTO:', dto);
       
-      // Convert DTO → Frontend Model
       const frontendConfig = WorkflowMapper.mapDtoToFrontend(dto);
       console.log('[API] Mapped to frontend model:', frontendConfig);
       
@@ -287,20 +209,29 @@ export class WorkflowApiService {
     }
   }
 
-  // 💾 Speichere über deine Controller Endpoints
-  static async saveWorkflowConfiguration(config: WorkflowConfiguration): Promise<WorkflowConfiguration> {
+  // 💾 POST /api/workflow/configuration (new) oder PUT /api/workflow/configuration/{id} (update)
+  static async saveWorkflowConfiguration(config: any): Promise<any> {
     try {
       console.log('[API] Saving workflow:', config);
       
-      // Convert Frontend → DTO
-      const dto = WorkflowMapper.mapFrontendToDto(config);
-      console.log('[API] Mapped to DTO:', dto);
+      const isUpdate = config.id && config.id !== '' && config.id !== 'new';
+      const method = isUpdate ? 'PUT' : 'POST';
       
-      const method = config.id && config.id !== '' ? 'PUT' : 'POST';
-      const url = (config.id && config.id !== '') 
-        ? `${API_BASE_URL}/configuration/${config.id}`
-        : `${API_BASE_URL}/configuration`;
-
+      let url: string;
+      let dto: any;
+      
+      if (isUpdate) {
+        // Update existing workflow
+        url = `${API_BASE_URL}/configuration/${config.id}`;
+        dto = WorkflowMapper.mapFrontendToUpdateDto(config);
+      } else {
+        // Create new workflow
+        url = `${API_BASE_URL}/configuration`;
+        dto = WorkflowMapper.mapFrontendToCreateDto(config);
+      }
+      
+      console.log(`[API] ${method} ${url}`, dto);
+      
       const response = await fetch(url, {
         method,
         headers: { 'Content-Type': 'application/json' },
@@ -309,25 +240,22 @@ export class WorkflowApiService {
 
       if (!response.ok) {
         const errorText = await response.text();
+        console.error('[API] Save failed:', errorText);
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
       
-      // Controller Response → Frontend Model
       const savedDto: WorkflowConfigurationDto = await response.json();
-      console.log('[API] Saved DTO response:', savedDto);
+      console.log('[API] ✅ Workflow saved successfully:', savedDto);
       
-      const savedConfig = WorkflowMapper.mapDtoToFrontend(savedDto);
-      console.log('[API] Mapped saved config:', savedConfig);
-      
-      return savedConfig;
+      return WorkflowMapper.mapDtoToFrontend(savedDto);
     } catch (error) {
-      console.error('[API] Error saving workflow:', error);
+      console.error('[API] 💥 Save error:', error);
       throw error;
     }
   }
 
-  // ✅ Nutzt deine Validate Controller-Methode
-  static async validateWorkflow(config: WorkflowConfiguration) {
+  // ✅ POST /api/workflow/validate
+  static async validateWorkflow(config: any) {
     try {
       console.log('[API] Validating workflow:', config);
       
@@ -361,108 +289,122 @@ export class WorkflowApiService {
     }
   }
 
-  // 📁 Import über deine Controller-Methode
-  static async importWorkflow(file: File): Promise<WorkflowConfiguration> {
+  // 🗑️ DELETE /api/workflow/configuration/{id}
+  static async deleteWorkflowConfiguration(configId: string): Promise<boolean> {
+    try {
+      console.log('[API] Deleting workflow:', configId);
+      
+      const response = await fetch(`${API_BASE_URL}/configuration/${configId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.status === 404) {
+        console.log('[API] Workflow not found for deletion');
+        return false;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      console.log('[API] ✅ Workflow deleted successfully');
+      return true;
+    } catch (error) {
+      console.error('[API] Delete error:', error);
+      throw error;
+    }
+  }
+
+  // 📊 GET /api/workflow/configurations (alle Workflows)
+  static async getAllWorkflowConfigurations(): Promise<any[]> {
+    try {
+      console.log('[API] Loading all workflow configurations');
+      
+      const response = await fetch(`${API_BASE_URL}/configurations`);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const dtos: WorkflowConfigurationDto[] = await response.json();
+      console.log('[API] Loaded configurations:', dtos.length);
+      
+      return dtos.map(dto => WorkflowMapper.mapDtoToFrontend(dto));
+    } catch (error) {
+      console.error('[API] Error loading all configurations:', error);
+      return [];
+    }
+  }
+
+  // 📁 POST /api/workflow/export/{id}
+  static async exportWorkflowConfiguration(configId: string): Promise<string> {
+    try {
+      console.log('[API] Exporting workflow:', configId);
+      
+      const response = await fetch(`${API_BASE_URL}/export/${configId}`, {
+        method: 'POST'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const exportData = await response.json();
+      console.log('[API] ✅ Workflow exported successfully');
+      
+      return JSON.stringify(exportData, null, 2);
+    } catch (error) {
+      console.error('[API] Export error:', error);
+      throw error;
+    }
+  }
+
+  // 📥 POST /api/workflow/import
+  static async importWorkflow(file: File): Promise<any> {
     try {
       console.log('[API] Importing workflow from file:', file.name);
       
       const formData = new FormData();
       formData.append('file', file);
-
+      
       const response = await fetch(`${API_BASE_URL}/import`, {
         method: 'POST',
         body: formData
       });
-
+      
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
-
+      
       const dto: WorkflowConfigurationDto = await response.json();
-      console.log('[API] Imported DTO:', dto);
+      console.log('[API] ✅ Workflow imported successfully:', dto);
       
-      const frontendConfig = WorkflowMapper.mapDtoToFrontend(dto);
-      console.log('[API] Mapped imported config:', frontendConfig);
-      
-      return frontendConfig;
+      return WorkflowMapper.mapDtoToFrontend(dto);
     } catch (error) {
       console.error('[API] Import error:', error);
       throw error;
     }
   }
 
-  // 🔄 Reset über deine Controller-Methode
-  static async resetWorkflowToDefault(workflowType: string): Promise<WorkflowConfiguration | null> {
+  // 🔧 GET /api/workflow/templates
+  static async getWorkflowTemplates(): Promise<Record<string, any>> {
     try {
-      console.log('[API] Resetting workflow to default:', workflowType);
+      console.log('[API] Loading workflow templates');
       
-      const response = await fetch(`${API_BASE_URL}/reset/${encodeURIComponent(workflowType)}`, {
-        method: 'POST'
-      });
-
-      if (response.status === 404) {
-        console.log('[API] No default template found');
-        return null;
-      }
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const dto: WorkflowConfigurationDto = await response.json();
-      console.log('[API] Reset DTO:', dto);
-      
-      const frontendConfig = WorkflowMapper.mapDtoToFrontend(dto);
-      console.log('[API] Mapped reset config:', frontendConfig);
-      
-      return frontendConfig;
-    } catch (error) {
-      console.error('[API] Reset error:', error);
-      return null;
-    }
-  }
-
-  // 🆕 Erstelle leeren Workflow (Fallback wenn keiner existiert)
-  static async createEmptyWorkflow(workflowType: string): Promise<WorkflowConfiguration> {
-    const emptyConfig: WorkflowConfiguration = {
-      id: '', // Wird vom Backend gesetzt
-      type: workflowType,
-      name: `Workflow für ${workflowType}`,
-      description: `Standard-Workflow für ${workflowType}`,
-      steps: [],
-      isActive: false,
-      version: 1,
-      createdAt: new Date().toISOString(),
-      modifiedAt: new Date().toISOString(),
-      createdBy: 'system'
-    };
-
-    return await this.saveWorkflowConfiguration(emptyConfig);
-  }
-
-  // 🧪 Test API Connection
-  static async testConnection(): Promise<boolean> {
-    try {
-      const response = await fetch(`${API_BASE_URL}/configurations`);
-      return response.ok;
-    } catch (error) {
-      console.error('[API] Connection test failed:', error);
-      return false;
-    }
-  }
-
-  // 📋 Lade alle Workflow Templates (nutzt deine Templates Controller-Methode)
-  static async getWorkflowTemplates() {
-    try {
       const response = await fetch(`${API_BASE_URL}/templates`);
+      
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const templates = await response.json();
-      console.log('[API] Workflow templates:', templates);
+      const templateDtos: Record<string, WorkflowConfigurationDto> = await response.json();
+      console.log('[API] Loaded templates:', Object.keys(templateDtos));
+      
+      // Convert all DTOs to frontend models
+      const templates: Record<string, any> = {};
+      for (const [key, dto] of Object.entries(templateDtos)) {
+        templates[key] = WorkflowMapper.mapDtoToFrontend(dto);
+      }
       
       return templates;
     } catch (error) {
@@ -470,35 +412,36 @@ export class WorkflowApiService {
       return {};
     }
   }
+
+  // 🔄 POST /api/workflow/reset/{workflowType}
+  static async resetWorkflowToDefault(workflowType: string): Promise<any | null> {
+    try {
+      console.log('[API] Resetting workflow to default:', workflowType);
+      
+      const response = await fetch(`${API_BASE_URL}/reset/${encodeURIComponent(workflowType)}`, {
+        method: 'POST'
+      });
+      
+      if (response.status === 404) {
+        console.log('[API] No default template found for workflow type');
+        return null;
+      }
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
+      const dto: WorkflowConfigurationDto = await response.json();
+      console.log('[API] ✅ Workflow reset successfully:', dto);
+      
+      return WorkflowMapper.mapDtoToFrontend(dto);
+    } catch (error) {
+      console.error('[API] Reset error:', error);
+      throw error;
+    }
+  }
 }
 
-// =======================================================
-// USAGE EXAMPLE:
-// =======================================================
+// ================ EXPORT ================
 
-/*
-// In deinem workflow-designer.tsx:
-
-const loadWorkflow = $(async (workflowType: string) => {
-  try {
-    // Lädt echte Daten über deinen WorkflowController.GetWorkflowByType!
-    const config = await WorkflowApiService.getWorkflowByType(workflowType);
-    
-    if (config) {
-      // Workflow aus DB geladen - Steps sind im config.steps Array!
-      console.log('Loaded workflow steps:', config.steps);
-      currentConfig.value = config;
-      workflowSteps.value = [...config.steps]; // 🎯 HIER KOMMEN DIE STEPS HER!
-      showToastMessage(`Workflow "${workflowType}" geladen (${config.steps.length} Steps)`, 'success');
-    } else {
-      // Kein Workflow für diesen Type in DB
-      const newConfig = await WorkflowApiService.createEmptyWorkflow(workflowType);
-      currentConfig.value = newConfig;
-      workflowSteps.value = [];
-      showToastMessage(`Neuer Workflow "${workflowType}" erstellt`, 'info');
-    }
-  } catch (error) {
-    showToastMessage(`Fehler: ${error.message}`, 'error');
-  }
-});
-*/
+export { WorkflowApiService };
