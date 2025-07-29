@@ -441,7 +441,3 @@ export class WorkflowApiService {
     }
   }
 }
-
-// ================ EXPORT ================
-
-export { WorkflowApiService };
