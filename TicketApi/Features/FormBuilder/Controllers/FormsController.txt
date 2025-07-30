@@ -56,7 +56,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                     ? new List<string>()
                     : userRoles.Split(',').ToList();
 
-                var currentUserId = _userService.GetCurrentUserIdAsync().ToString();
+                var currentUserId = await _userService.GetCurrentUserIdAsync();
                 var config = await _formService.GetFormConfigurationAsync(requirementType, userRolesList, currentUserId);
 
                 if (config == null)
@@ -70,7 +70,15 @@ namespace TicketApi.Features.FormBuilder.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error getting form configuration for requirement type: {RequirementType}", requirementType);
-                return StatusCode(500, ApiResponse<FormConfigurationDto>.CreateError("Internal server error"));
+                
+                // Return more detailed error in development
+                var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+                var errorMessage = isDevelopment 
+                    ? $"Internal server error: {ex.Message}" 
+                    : "Internal server error";
+                    
+                return StatusCode(500, ApiResponse<FormConfigurationDto>.CreateError(errorMessage, 
+                    isDevelopment ? new List<string> { ex.ToString() } : null));
             }
         }
 
@@ -195,7 +203,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                     return BadRequest(ApiResponse<FormConfigurationDto>.CreateError("Validation failed", errors));
                 }
 
-                var currentUserId = _userService.GetCurrentUserIdAsync().ToString();
+                var currentUserId = await _userService.GetCurrentUserIdAsync();
                 var currentUserName = (await _userService.GetCurrentUserObject())?.Name ?? "unknown";
 
                 // Map request to entity
@@ -210,6 +218,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                     {
                         sections = request.Sections,
                         fields = request.Fields,
+                        widgets = request.Widgets, // NEW: Include widgets
                         permissions = request.Permissions,
                         lightMode = request.LightMode
                     }),
@@ -288,7 +297,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 IncrementVersion(existingConfig.Version);
 
                 // Update configuration data if provided
-                if (request.Sections != null || request.Fields != null ||
+                if (request.Sections != null || request.Fields != null || request.Widgets != null ||
                     request.Permissions != null || request.LightMode != null)
                 {
                     var configData = JsonConvert.DeserializeObject<dynamic>(existingConfig.ConfigurationData) ?? new { };
@@ -297,6 +306,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                     {
                         sections = request.Sections ?? ((dynamic)configData).sections,
                         fields = request.Fields ?? ((dynamic)configData).fields,
+                        widgets = request.Widgets ?? ((dynamic)configData).widgets, // NEW: Include widgets
                         permissions = request.Permissions ?? ((dynamic)configData).permissions,
                         lightMode = request.LightMode ?? ((dynamic)configData).lightMode
                     });
@@ -660,6 +670,7 @@ namespace TicketApi.Features.FormBuilder.Controllers
                 WorkflowStepId = entity.WorkflowStepId,
                 Sections = JsonConvert.DeserializeObject<List<FormSectionDto>>(configData?.sections?.ToString() ?? "[]"),
                 Fields = JsonConvert.DeserializeObject<List<FormFieldDto>>(configData?.fields?.ToString() ?? "[]"),
+                Widgets = JsonConvert.DeserializeObject<List<FormWidgetDto>>(configData?.widgets?.ToString() ?? "[]"), // NEW: Map widgets
                 Version = entity.Version,
                 IsActive = entity.IsActive ?? false,
                 HasLightMode = entity.HasLightMode ?? false,

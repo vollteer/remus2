@@ -4,6 +4,7 @@
     using Microsoft.AspNetCore.Mvc;
     using TicketApi.Features.WorkflowBuilder.DTO;
     using TicketApi.Features.WorkflowBuilder.Services;
+    using TicketApi.Features.FormBuilder.DTO;
 
     namespace RequirementsApi.Controllers
     {
@@ -38,20 +39,33 @@
             
             // GET /api/workflow/configuration/{type}
             [HttpGet("configuration/{workflowType}")]
-            public async Task<ActionResult<WorkflowConfigurationDto>> GetWorkflowByType(string workflowType)
+            public async Task<ActionResult<ApiResponse<WorkflowConfigurationDto>>> GetWorkflowByType(string workflowType)
             {
                 try
                 {
+                    _logger.LogInformation("Getting workflow configuration for type: {WorkflowType}", workflowType);
+                    
                     var workflow = await _workflowService.GetWorkflowByTypeAsync(workflowType);
                     if (workflow == null)
-                        return NotFound($"Workflow type '{workflowType}' not found");
+                    {
+                        _logger.LogWarning("Workflow type '{WorkflowType}' not found", workflowType);
+                        return Ok(ApiResponse<WorkflowConfigurationDto>.CreateSuccess(null, "No workflow configuration found"));
+                    }
 
-                    return Ok(workflow);
+                    return Ok(ApiResponse<WorkflowConfigurationDto>.CreateSuccess(workflow));
                 }
                 catch (Exception ex)
                 {
                     _logger.LogError(ex, "Error retrieving workflow for type {WorkflowType}", workflowType);
-                    return StatusCode(500, "Internal server error");
+                    
+                    // Return more detailed error in development
+                    var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+                    var errorMessage = isDevelopment 
+                        ? $"Internal server error: {ex.Message}" 
+                        : "Internal server error";
+                        
+                    return StatusCode(500, ApiResponse<WorkflowConfigurationDto>.CreateError(errorMessage, 
+                        isDevelopment ? new List<string> { ex.ToString() } : null));
                 }
             }
 

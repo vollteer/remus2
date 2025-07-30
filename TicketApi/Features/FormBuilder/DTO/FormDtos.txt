@@ -155,6 +155,7 @@ namespace TicketApi.Features.FormBuilder.DTO
         public string? WorkflowStepId { get; set; }
         public List<FormSectionDto> Sections { get; set; } = new();
         public List<FormFieldDto> Fields { get; set; } = new();
+        public List<FormWidgetDto> Widgets { get; set; } = new(); // NEW: Widget support
         public string Version { get; set; } = "v1.0";
         public bool IsActive { get; set; }
         public bool HasLightMode { get; set; }
@@ -192,7 +193,22 @@ namespace TicketApi.Features.FormBuilder.DTO
         public int Order { get; set; }
         public string Width { get; set; } = "full";
         public string? Section { get; set; }
+        public string? Widget { get; set; } // NEW: Widget ID this field belongs to
         public bool LightModeVisible { get; set; }
+        public List<string>? WorkflowStepBinding { get; set; }
+        public FieldPermissionsDto? Permissions { get; set; }
+    }
+
+    // NEW: Widget DTO
+    public class FormWidgetDto
+    {
+        public string Id { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty; // terminGroup, budgetGroup, etc.
+        public string Title { get; set; } = string.Empty;
+        public string? Description { get; set; }
+        public int Order { get; set; }
+        public string? Section { get; set; }
+        public List<FormFieldDto> Fields { get; set; } = new();
         public List<string>? WorkflowStepBinding { get; set; }
         public FieldPermissionsDto? Permissions { get; set; }
     }
@@ -256,6 +272,8 @@ namespace TicketApi.Features.FormBuilder.DTO
         [Required]
         public List<FormFieldDto> Fields { get; set; } = new();
 
+        public List<FormWidgetDto> Widgets { get; set; } = new(); // NEW: Widget support
+
         public bool IsActive { get; set; } = true;
         public bool HasLightMode { get; set; } = true;
         public FormPermissionsDto? Permissions { get; set; }
@@ -281,6 +299,7 @@ namespace TicketApi.Features.FormBuilder.DTO
 
         public List<FormSectionDto>? Sections { get; set; }
         public List<FormFieldDto>? Fields { get; set; }
+        public List<FormWidgetDto>? Widgets { get; set; } // NEW: Widget support
         public bool? HasLightMode { get; set; }
         public FormPermissionsDto? Permissions { get; set; }
         public LightModeConfigDto? LightMode { get; set; }

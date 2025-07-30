@@ -19,6 +19,7 @@ namespace TicketApi.Features.FormBuilder.DTO
                 {
                     sections = dto.Sections,
                     fields = dto.Fields,
+                    widgets = dto.Widgets,
                     permissions = dto.Permissions,
                     lightMode = dto.LightMode
                 }),
@@ -38,6 +39,7 @@ namespace TicketApi.Features.FormBuilder.DTO
             {
                 fields = dto.Fields,
                 sections = dto.Sections,
+                widgets = dto.Widgets,
                 permissions = dto.Permissions,
                 lightMode = dto.LightMode
             });
