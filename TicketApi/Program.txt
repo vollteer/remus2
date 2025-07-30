@@ -54,21 +54,24 @@ builder.Services.Configure<JsonOptions>(options =>
 {
     options.SerializerOptions.PropertyNameCaseInsensitive = true;
     options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.SerializerOptions.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 });
 
 // filter controller using custom attribute
-builder.Services.AddControllers().AddJsonOptions(options => 
-{ options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
+builder.Services.AddControllers().AddJsonOptions(options =>
+{
+    options.JsonSerializerOptions.PropertyNameCaseInsensitive = true;
     options.JsonSerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    options.JsonSerializerOptions.Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping;
 })
 
     .ConfigureApplicationPartManager(partManager =>
-{
+    {
 
-    partManager.FeatureProviders.Clear(); // deactivate automatic controller detection
+        partManager.FeatureProviders.Clear(); // deactivate automatic controller detection
 
-    partManager.FeatureProviders.Add(new CustomControllerFilter());
-})
+        partManager.FeatureProviders.Add(new CustomControllerFilter());
+    })
 
     .AddOData(
     options =>
@@ -161,9 +164,9 @@ builder.Services.AddSwaggerGen(c =>
      );
     c.UseOneOfForPolymorphism();
 
-    // Alle Server-URLs aus der Konfiguration hinzufügen
+    // Alle Server-URLs aus der Konfiguration hinzufï¿½gen
     var serversSection = builder.Configuration.GetSection("Swagger:Servers").Get<Dictionary<string, string>>(); ;
-    // Einen Server mit Variablen (enum) hinzufügen
+    // Einen Server mit Variablen (enum) hinzufï¿½gen
 
     foreach (var server in serversSection)
     {
@@ -223,6 +226,13 @@ builder.Services.ConfigureHealthChecks(builder.Configuration);
 //)
 
 var app = builder.Build();
+
+// Configure proper encoding for German characters
+app.Use(async (context, next) =>
+{
+    context.Response.Headers.Add("Content-Type", "application/json; charset=utf-8");
+    await next();
+});
 app.MapHealthChecks("/api/health", new HealthCheckOptions()
 {
     Predicate = _ => true,
@@ -249,5 +259,25 @@ app.UseEndpoints(endpoints => endpoints.MapControllers());
 // error handling
 app.UseStatusCodePages();
 app.UseExceptionHandler();
+
+// Ensure database is created and migrations are applied
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    try
+    {
+        var requirementsContext = services.GetRequiredService<RequirementsDbContext>();
+        requirementsContext.Database.EnsureCreated();
+        
+        var remusContext = services.GetRequiredService<RemusContext>();
+        remusContext.Database.EnsureCreated();
+        
+        app.Logger.LogInformation("Database initialized successfully");
+    }
+    catch (Exception ex)
+    {
+        app.Logger.LogError(ex, "An error occurred while initializing the database");
+    }
+}
 
 app.Run();
