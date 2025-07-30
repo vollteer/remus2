@@ -89,7 +89,7 @@ export interface PagedResult<T> {
 // Kein ApiResponse<T> wrapper needed, da dein Controller direkt DTOs zurückgibt
 
 class RequirementsApiService {
-  private readonly BASE_URL = 'https://localhost:7068/api/requirements';
+  private readonly BASE_URL = 'https://localhost:7100/api/requirements';
 
   private getHeaders(): HeadersInit {
     return {
@@ -251,7 +251,7 @@ class RequirementsApiService {
       console.log(`Getting workflow steps for: ${requirementType}`);
       
       // Nutze deinen WorkflowController!
-      const response = await fetch(`https://localhost:7068/api/workflow/configuration/${requirementType}`, {
+      const response = await fetch(`https://localhost:7100/api/workflow/configuration/${requirementType}`, {
         method: 'GET',
         headers: this.getHeaders()
       });

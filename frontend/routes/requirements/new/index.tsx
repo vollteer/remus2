@@ -163,9 +163,9 @@ export default component$(() => {
   const isStepValid = (step: number) => {
     switch (step) {
       case 1:
-        return formData.value.title && formData.value.type && formData.value.realizationObject;
+        return !!(formData.value.title && formData.value.type && formData.value.realizationObject);
       case 2:
-        return formData.value.initialSituation && formData.value.goals;
+        return !!(formData.value.initialSituation && formData.value.goals);
       case 3:
         return true; // Optional fields
       case 4:

@@ -23,7 +23,7 @@ export interface Requirement {
 
 export type RequirementType = 
   | 'Kleinanforderung'
-  | 'Großanforderung'
+  | 'GroßYanforderung'  // Database encoding issue - temporary workaround
   | 'TIA-Anforderung'
   | 'Supportleistung'
   | 'Betriebsauftrag'
@@ -68,6 +68,9 @@ export interface WorkflowStep {
   status: 'pending' | 'current' | 'completed';
   completedAt?: string;
   assignee?: Person;
+  estimatedDays?: number;
+  parallelGroup?: string;
+  isParallel?: boolean;
 }
 
 export interface WorkLogEntry {

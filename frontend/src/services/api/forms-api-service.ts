@@ -3,7 +3,7 @@
 
 interface FormField {
   id: string;
-  type: 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'date' | 'datetime' | 'select' | 'multiselect' | 'radio' | 'checkbox' | 'checkboxGroup' | 'file' | 'currency' | 'percentage' | 'url' | 'divider' | 'heading' | 'roleSearch' | 'budgetField' | 'referenceField';
+  type: 'text' | 'textarea' | 'number' | 'email' | 'phone' | 'date' | 'datetime' | 'select' | 'multiselect' | 'radio' | 'checkbox' | 'checkboxGroup' | 'file' | 'currency' | 'percentage' | 'url' | 'divider' | 'heading' | 'roleSearch' | 'budgetField' | 'referenceField' | 'userSearch' | 'requirementSearch';
   name: string;
   label: string;
   placeholder?: string;
@@ -15,7 +15,24 @@ interface FormField {
   order: number;
   width: 'full' | 'half' | 'third' | 'quarter';
   section?: string;
+  widget?: string; // Widget ID this field belongs to
   lightModeVisible?: boolean;
+  workflowStepBinding?: string[];
+  permissions?: {
+    allowedRoles: string[];
+    readOnlyRoles: string[];
+    hideFromRoles: string[];
+  };
+}
+
+interface FormWidget {
+  id: string;
+  type: 'terminGroup' | 'budgetGroup' | 'zustaendigkeitGroup' | 'pruefungGroup' | 'customGroup';
+  title: string;
+  description?: string;
+  order: number;
+  section?: string;
+  fields: FormField[];
   workflowStepBinding?: string[];
   permissions?: {
     allowedRoles: string[];
@@ -36,10 +53,11 @@ interface FormConfiguration {
   description?: string;
   workflowType: string;
   fields: FormField[];
+  widgets: FormWidget[];
   lightModeEnabled: boolean;
   createdAt: string;
   modifiedAt: string;
-  version: number;
+  version: string;
 }
 
 /**
@@ -48,7 +66,7 @@ interface FormConfiguration {
 export class FormsApiService {
   private baseUrl: string;
 
-  constructor(baseUrl: string = 'https://localhost:7068/api') {
+  constructor(baseUrl: string = 'https://localhost:7100/api') {
     this.baseUrl = baseUrl;
   }
 
@@ -63,13 +81,47 @@ export class FormsApiService {
   }
 
   /**
+   * Test API connection
+   */
+  async testConnection(): Promise<boolean> {
+    try {
+      console.log('[QwikAPI] Testing connection to:', this.baseUrl);
+      const response = await fetch(`${this.baseUrl}/health`, {
+        method: 'GET',
+        headers: this.getHeaders(),
+      });
+      
+      console.log('[QwikAPI] Health check response:', response.status);
+      return response.ok;
+    } catch (error) {
+      console.error('[QwikAPI] Connection test failed:', error);
+      return false;
+    }
+  }
+
+  /**
    * Standard fetch headers
    */
   private getHeaders(): HeadersInit {
     const headers: HeadersInit = {
-      'Content-Type': 'application/json',
+      'Content-Type': 'application/json; charset=utf-8',
+      'Accept': 'application/json; charset=utf-8',
     };
 
+    // Add API keys if available (Backend expects these)
+    if (typeof window !== 'undefined') {
+      const apiKey = localStorage.getItem('apiKey');
+      const userApiKey = localStorage.getItem('userApiKey');
+      
+      if (apiKey) {
+        headers['x-helaba-api-key'] = apiKey;
+      }
+      if (userApiKey) {
+        headers['user-api-key'] = userApiKey;
+      }
+    }
+
+    // Also add Bearer token if available
     const token = this.getAuthToken();
     if (token) {
       headers['Authorization'] = `Bearer ${token}`;
@@ -104,15 +156,36 @@ export class FormsApiService {
       const apiResponse = await response.json();
       console.log('[QwikAPI] API Response:', apiResponse);
 
-      if (apiResponse.isSuccess && apiResponse.data) {
-        return this.mapApiToFormConfiguration(apiResponse.data, workflowType);
+      if (apiResponse.isSuccess) {
+        if (apiResponse.data) {
+          return this.mapApiToFormConfiguration(apiResponse.data, workflowType);
+        } else {
+          // No configuration found is not an error - return null to create new
+          console.log('[QwikAPI] No existing configuration found for', workflowType);
+          return null;
+        }
       } else {
-        throw new Error(apiResponse.message || 'API returned no data');
+        throw new Error(apiResponse.message || 'API returned error');
       }
 
     } catch (error) {
-      console.warn('[QwikAPI] API call failed, creating fallback:', error);
-      return this.createFallbackConfiguration(workflowType);
+      console.warn('[QwikAPI] API call failed, checking local storage:', error);
+      
+      // Try to load from local storage first
+      const localConfig = this.loadConfigurationLocally(workflowType);
+      if (localConfig) {
+        console.log('[QwikAPI] ✅ Using locally stored configuration');
+        return localConfig;
+      }
+      
+      console.log('[QwikAPI] ℹ️ No local config found, creating fallback configuration');
+      const fallbackConfig = this.createFallbackConfiguration(workflowType);
+      
+      // Save the fallback config locally for future use
+      this.saveConfigurationLocally(fallbackConfig);
+      console.log('[QwikAPI] 💾 Fallback configuration saved locally for future use');
+      
+      return fallbackConfig;
     }
   }
 
@@ -131,14 +204,56 @@ export class FormsApiService {
       const method = isNewForm ? 'POST' : 'PUT';
       const apiPayload = this.mapFormConfigurationToApi(config);
 
+      console.log('[QwikAPI] Request details:', {
+        url,
+        method,
+        headers: this.getHeaders(),
+        payload: apiPayload
+      });
+
       const response = await fetch(url, {
         method,
         headers: this.getHeaders(),
         body: JSON.stringify(apiPayload),
       });
 
+      console.log('[QwikAPI] Response status:', response.status, response.statusText);
+
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        // Try to get more details from the server response
+        let errorDetails = response.statusText;
+        let errorBody = null;
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          console.log('[QwikAPI] Error response content-type:', contentType);
+          
+          if (contentType && contentType.includes('application/json')) {
+            errorBody = await response.json();
+            console.error('[QwikAPI] Server error JSON response:', errorBody);
+            errorDetails = errorBody.message || errorBody.title || JSON.stringify(errorBody);
+          } else {
+            const errorText = await response.text();
+            console.error('[QwikAPI] Server error text response:', errorText);
+            errorDetails = errorText || response.statusText;
+          }
+        } catch (parseError) {
+          console.warn('[QwikAPI] Could not parse error response:', parseError);
+        }
+        
+        // More specific error handling
+        if (response.status === 500) {
+          console.error('[QwikAPI] Internal Server Error - Full details:', {
+            status: response.status,
+            statusText: response.statusText,
+            errorDetails,
+            errorBody,
+            payload: apiPayload,
+            url
+          });
+        }
+        
+        throw new Error(`HTTP ${response.status}: ${errorDetails}`);
       }
 
       const apiResponse = await response.json();
@@ -152,6 +267,25 @@ export class FormsApiService {
 
     } catch (error) {
       console.error('[QwikAPI] Save failed:', error);
+      
+      // If server fails, try to save locally as fallback
+      if (error instanceof Error && error.message.includes('500')) {
+        console.warn('[QwikAPI] Server error, attempting local fallback save...');
+        try {
+          this.saveConfigurationLocally(config);
+          console.log('[QwikAPI] Configuration saved locally as fallback');
+          
+          // Return the config with a warning
+          return {
+            ...config,
+            id: config.id?.startsWith('temp-') ? `local-${Date.now()}` : config.id,
+            modifiedAt: new Date().toISOString()
+          };
+        } catch (localError) {
+          console.error('[QwikAPI] Local fallback also failed:', localError);
+        }
+      }
+      
       throw error;
     }
   }
@@ -255,16 +389,34 @@ export class FormsApiService {
    * Map API Response to FormConfiguration
    */
   private mapApiToFormConfiguration(apiData: any, workflowType: string): FormConfiguration {
+    // Handle case where fields might be nested in sections or stored differently
+    let fields = [];
+    let widgets = [];
+    
+    if (apiData.fields && Array.isArray(apiData.fields)) {
+      fields = apiData.fields;
+    } else if (apiData.sections && Array.isArray(apiData.sections)) {
+      // If fields are stored within sections, extract them
+      console.log('[QwikAPI] Extracting fields from sections structure');
+      fields = apiData.sections.flatMap((section: any) => section.fields || []);
+    }
+    
+    // Handle widgets if they exist in the API response
+    if (apiData.widgets && Array.isArray(apiData.widgets)) {
+      widgets = this.mapApiWidgetsToFormWidgets(apiData.widgets);
+    }
+    
     return {
       id: apiData.id || `temp-${Date.now()}`,
       name: apiData.name || `${workflowType} Formular`,
       description: apiData.description || '',
       workflowType: apiData.requirementType || workflowType,
-      fields: this.mapApiFieldsToFormFields(apiData.fields || []),
+      fields: this.mapApiFieldsToFormFields(fields),
+      widgets: widgets,
       lightModeEnabled: apiData.hasLightMode ?? false,
       createdAt: apiData.createdAt || new Date().toISOString(),
       modifiedAt: apiData.modifiedAt || new Date().toISOString(),
-      version: parseInt(apiData.version) || 1
+      version: apiData.version || '1.0.0'
     };
   }
 
@@ -272,26 +424,57 @@ export class FormsApiService {
    * Map API Fields to FormFields
    */
   private mapApiFieldsToFormFields(apiFields: any[]): FormField[] {
+    if (!apiFields || !Array.isArray(apiFields)) {
+      console.warn('[QwikAPI] No fields array in API response, returning empty array');
+      return [];
+    }
+    
     return apiFields.map(field => ({
-      id: field.id,
+      id: field.id || `field-${Date.now()}-${Math.random()}`,
       type: this.mapApiFieldType(field.type),
       name: field.name,
       label: field.label,
       placeholder: field.placeholder || '',
-      description: field.helpText || '',
+      description: field.description || field.helpText || '',
       required: field.required ?? false,
-      disabled: field.isReadonly ?? false,
+      disabled: field.disabled || field.isReadonly || false,
       defaultValue: field.defaultValue,
       options: field.options?.map((opt: any) => ({
-        value: opt.value,
-        label: opt.label
+        value: opt.value || opt.Value,
+        label: opt.label || opt.Label
       })) || [],
-      order: field.order,
+      order: field.order || 0,
       width: field.width as 'full' | 'half' | 'third' | 'quarter' || 'full',
-      section: field.sectionId || '',
-      lightModeVisible: this.isLightModeField(field),
-      workflowStepBinding: this.extractWorkflowStepBinding(field),
-      permissions: {
+      section: field.section || field.sectionId || 'default',
+      lightModeVisible: field.lightModeVisible || this.isLightModeField(field),
+      workflowStepBinding: field.workflowStepBinding || this.extractWorkflowStepBinding(field),
+      permissions: field.permissions || {
+        allowedRoles: ['Requester', 'Approver'],
+        readOnlyRoles: [],
+        hideFromRoles: []
+      }
+    }));
+  }
+
+  /**
+   * Map API Widgets to FormWidgets
+   */
+  private mapApiWidgetsToFormWidgets(apiWidgets: any[]): FormWidget[] {
+    if (!apiWidgets || !Array.isArray(apiWidgets)) {
+      console.warn('[QwikAPI] No widgets array in API response, returning empty array');
+      return [];
+    }
+    
+    return apiWidgets.map(widget => ({
+      id: widget.id || `widget-${Date.now()}-${Math.random()}`,
+      type: widget.type || 'customGroup',
+      title: widget.title || widget.name || 'Unnamed Widget',
+      description: widget.description || '',
+      order: widget.order || 0,
+      section: widget.section || 'default',
+      fields: this.mapApiFieldsToFormFields(widget.fields || []),
+      workflowStepBinding: widget.workflowStepBinding || [],
+      permissions: widget.permissions || {
         allowedRoles: ['Requester', 'Approver'],
         readOnlyRoles: [],
         hideFromRoles: []
@@ -319,7 +502,9 @@ export class FormsApiService {
       'file': 'file',
       'currency': 'currency',
       'percentage': 'percentage',
-      'url': 'url'
+      'url': 'url',
+      'userSearch': 'userSearch',
+      'requirementSearch': 'requirementSearch'
     };
 
     return typeMap[apiType] || 'text';
@@ -343,58 +528,177 @@ export class FormsApiService {
   }
 
   /**
+   * Create sections from fields (for backend compatibility)
+   */
+  private createSectionsFromFields(fields: FormField[]): any[] {
+    // Group fields by section or create a default section
+    const sectionMap = new Map<string, FormField[]>();
+    
+    fields.forEach(field => {
+      const sectionId = field.section || 'default';
+      if (!sectionMap.has(sectionId)) {
+        sectionMap.set(sectionId, []);
+      }
+      sectionMap.get(sectionId)!.push(field);
+    });
+
+    // Create section objects
+    const sections: any[] = [];
+    let order = 1;
+    
+    sectionMap.forEach((sectionFields, sectionId) => {
+      sections.push({
+        id: sectionId,
+        title: sectionId === 'default' ? 'Allgemeine Informationen' : sectionId,
+        description: '',
+        collapsible: false,
+        collapsed: false,
+        order: order++,
+        permissions: {
+          allowedRoles: [],
+          allowedUsers: [],
+          readOnlyRoles: [],
+          hideFromRoles: []
+        },
+        workflowStepBinding: []
+      });
+    });
+
+    return sections;
+  }
+
+  /**
    * Map FormConfiguration to API payload
    */
   private mapFormConfigurationToApi(config: FormConfiguration): any {
-    return {
-      id: config.id?.startsWith('temp-') ? undefined : config.id,
+    // Backend expects sections AND fields structure
+    const sections = this.createSectionsFromFields(config.fields);
+    
+    const payload = {
       name: config.name,
-      description: config.description,
+      description: config.description || '',
       requirementType: config.workflowType,
-      sections: [
-        {
-          id: 'main-section',
-          title: 'Hauptsektion',
-          description: 'Hauptsektion des Formulars',
-          order: 1,
-          isVisible: true,
-          isCollapsible: false,
-          isCollapsed: false
-        }
-      ],
-      fields: config.fields.map(field => ({
-        id: field.id,
-        sectionId: 'main-section',
-        name: field.name,
-        label: field.label,
-        type: field.type,
-        required: field.required,
-        order: field.order,
-        validationRules: {},
-        options: field.options || [],
-        defaultValue: field.defaultValue,
-        placeholder: field.placeholder,
-        helpText: field.description,
-        isVisible: true,
-        isReadonly: field.disabled,
-        conditions: [],
-        width: field.width
-      })),
       isActive: true,
       hasLightMode: config.lightModeEnabled,
+      // Backend requires both sections and fields
+      sections: sections,
+      fields: config.fields.map(field => ({
+        id: field.id,
+        type: field.type,
+        name: field.name,
+        label: field.label,
+        placeholder: field.placeholder || '',
+        description: field.description || '',
+        required: field.required || false,
+        disabled: field.disabled || false,
+        defaultValue: field.defaultValue || null,
+        options: field.options || [],
+        order: field.order,
+        width: field.width || 'full',
+        section: field.section || 'default',
+        widget: field.widget || null,
+        lightModeVisible: field.lightModeVisible || false,
+        workflowStepBinding: field.workflowStepBinding || [],
+        permissions: field.permissions || {
+          allowedRoles: [],
+          allowedUsers: [],
+          readOnlyRoles: [],
+          hideFromRoles: []
+        }
+      })),
+      // Add widgets to the payload
+      widgets: config.widgets.map(widget => ({
+        id: widget.id,
+        type: widget.type,
+        title: widget.title,
+        description: widget.description || '',
+        order: widget.order,
+        section: widget.section || 'default',
+        fields: widget.fields.map(field => ({
+          id: field.id,
+          type: field.type,
+          name: field.name,
+          label: field.label,
+          placeholder: field.placeholder || '',
+          description: field.description || '',
+          required: field.required || false,
+          disabled: field.disabled || false,
+          defaultValue: field.defaultValue || null,
+          options: field.options || [],
+          order: field.order,
+          width: field.width || 'full',
+          lightModeVisible: field.lightModeVisible || false,
+          workflowStepBinding: field.workflowStepBinding || [],
+          permissions: field.permissions || {
+            allowedRoles: [],
+            allowedUsers: [],
+            readOnlyRoles: [],
+            hideFromRoles: []
+          }
+        })),
+        workflowStepBinding: widget.workflowStepBinding || [],
+        permissions: widget.permissions || {
+          allowedRoles: [],
+          allowedUsers: [],
+          readOnlyRoles: [],
+          hideFromRoles: []
+        }
+      })),
       permissions: {
-        canView: ['Admin', 'User'],
-        canEdit: ['Admin'],
-        canSubmit: ['Admin', 'User'],
-        canReview: ['Admin'],
-        canApprove: ['Admin']
+        allowedRoles: [],
+        allowedUsers: [],
+        readOnlyRoles: [],
+        hideFromRoles: [],
+        denyRoles: [],
+        adminRoles: []
       },
       lightMode: {
         enabled: config.lightModeEnabled,
-        requiredFields: config.fields.filter(f => f.lightModeVisible).map(f => f.id),
-        hiddenSections: []
+        title: 'Light Mode',
+        description: 'Vereinfachte Ansicht',
+        showOnlyRequired: true
       }
     };
+
+    // Only include id if it's not a temp ID
+    if (config.id && !config.id.startsWith('temp-')) {
+      (payload as any).id = config.id;
+    }
+
+    console.log('[QwikAPI] Mapped payload with widgets:', JSON.stringify(payload, null, 2));
+    return payload;
+  }
+
+  /**
+   * Save configuration locally as fallback
+   */
+  private saveConfigurationLocally(config: FormConfiguration): void {
+    if (typeof window !== 'undefined') {
+      const key = `form-config-${config.workflowType}`;
+      localStorage.setItem(key, JSON.stringify(config));
+      console.log(`[QwikAPI] Configuration saved locally with key: ${key}`);
+    }
+  }
+
+  /**
+   * Load configuration from local storage
+   */
+  private loadConfigurationLocally(workflowType: string): FormConfiguration | null {
+    if (typeof window !== 'undefined') {
+      const key = `form-config-${workflowType}`;
+      const stored = localStorage.getItem(key);
+      if (stored) {
+        try {
+          const config = JSON.parse(stored);
+          console.log(`[QwikAPI] Configuration loaded from local storage: ${key}`);
+          return config;
+        } catch (error) {
+          console.warn(`[QwikAPI] Failed to parse local config for ${key}:`, error);
+          localStorage.removeItem(key); // Remove corrupted data
+        }
+      }
+    }
+    return null;
   }
 
   /**
@@ -442,10 +746,11 @@ export class FormsApiService {
           }
         }
       ],
+      widgets: [], // Empty widgets array for fallback
       lightModeEnabled: false,
       createdAt: new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
-      version: 1
+      version: 'v1.0.0'
     };
   }
 }
@@ -458,10 +763,16 @@ export class FormsApiService {
 export const formBuilderApi = new FormsApiService();
 
 // Export types for use in your FormBuilder
-export type { FormField, WorkflowStep, FormConfiguration };
+export type { FormField, FormWidget, WorkflowStep, FormConfiguration };
 
 // Service functions that your FormBuilder can use directly
 export const FormBuilderAPI = {
+  /**
+   * Test API connection
+   */
+  testConnection: () => 
+    formBuilderApi.testConnection(),
+    
   /**
    * Load form configuration for workflow
    */

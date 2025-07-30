@@ -3,7 +3,7 @@
 // 🔗 Echter API Service für deinen WorkflowController
 // =======================================================
 
-const API_BASE_URL = 'https://localhost:7068/api/workflow';
+const API_BASE_URL = 'https://localhost:7100/api/workflow';
 
 // ================ BACKEND DTO INTERFACES ================
 
@@ -187,22 +187,30 @@ export class WorkflowApiService {
       
       const response = await fetch(`${API_BASE_URL}/configuration/${encodeURIComponent(workflowType)}`);
       
-      if (response.status === 404) {
-        console.log('[API] No workflow found for this type');
-        return null;
-      }
-      
       if (!response.ok) {
+        if (response.status === 404) {
+          console.log('[API] No workflow found for this type');
+          return null;
+        }
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
-      const dto: WorkflowConfigurationDto = await response.json();
-      console.log('[API] Controller response DTO:', dto);
+      const apiResponse = await response.json();
+      console.log('[API] API Response:', apiResponse);
       
-      const frontendConfig = WorkflowMapper.mapDtoToFrontend(dto);
-      console.log('[API] Mapped to frontend model:', frontendConfig);
-      
-      return frontendConfig;
+      if (apiResponse.isSuccess && apiResponse.data) {
+        const dto: WorkflowConfigurationDto = apiResponse.data;
+        console.log('[API] Controller response DTO:', dto);
+        
+        const frontendConfig = WorkflowMapper.mapDtoToFrontend(dto);
+        console.log('[API] Mapped to frontend model:', frontendConfig);
+        
+        return frontendConfig;
+      } else {
+        // No configuration found is not an error
+        console.log('[API] No workflow configuration found for', workflowType);
+        return null;
+      }
     } catch (error) {
       console.error('[API] Error loading workflow:', error);
       return null;
