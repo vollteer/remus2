@@ -68,19 +68,9 @@ return (
         <span class="nav-link-text">Einstellungen</span>
       </a>
 
-      <a href="/administration/workflows" class={`nav-link ${isActive('/administration/workflows') ? 'nav-link-active' : ''}`}>
-        <span class="nav-link-icon">🎯</span>
-        <span class="nav-link-text">Workflow Designer</span>
-      </a>
-
       <a href="/administration/simple-workflows" class={`nav-link ${isActive('/administration/simple-workflows') ? 'nav-link-active' : ''}`}>
         <span class="nav-link-icon">⚡</span>
         <span class="nav-link-text">Simple Workflow Designer</span>
-      </a>
-                     
-      <a href="/administration/forms" class={`nav-link ${isActive('/administration/forms') ? 'nav-link-active' : ''}`}>
-        <span class="nav-link-icon">📝</span>
-        <span class="nav-link-text">Enhanced Form Builder</span>
       </a>
                      
       <a href="/administration/widget-forms" class={`nav-link ${isActive('/administration/widget-forms') ? 'nav-link-active' : ''}`}>

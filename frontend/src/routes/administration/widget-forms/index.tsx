@@ -5,35 +5,6 @@ import { WidgetEnhancedFormBuilder } from '~/components/administration/widget-en
 export default component$(() => {
   return (
     <div class="min-h-screen bg-gradient-to-br from-slate-50 to-purple-50">
-      {/* Page Header */}
-      <div class="bg-white/80 backdrop-blur-sm border-b border-slate-200/60 sticky top-0 z-50">
-        <div class="container mx-auto px-6 py-4">
-          <div class="flex items-center justify-between">
-            <div>
-              <h1 class="text-3xl font-bold bg-gradient-to-r from-purple-600 to-blue-600 bg-clip-text text-transparent">
-                📦 Widget Form Builder Administration
-              </h1>
-              <p class="text-slate-600 mt-1">
-                Erstelle intelligente Formulare mit Widget-Gruppen und dynamischen Feldern
-              </p>
-            </div>
-            <div class="flex gap-3">
-              <button class="px-4 py-2 bg-white text-gray-700 rounded-xl font-medium hover:bg-gray-50 border border-gray-300 hover:border-gray-400 transition-all duration-300">
-                📊 Widget Analytics
-              </button>
-              <button class="px-4 py-2 bg-white text-gray-700 rounded-xl font-medium hover:bg-gray-50 border border-gray-300 hover:border-gray-400 transition-all duration-300">
-                📥 Template Import
-              </button>
-              <button 
-                class="px-6 py-2 text-white rounded-xl font-bold hover:shadow-xl transition-all duration-300 transform hover:scale-105 shadow-lg"
-                style="background: linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%);"
-              >
-                🔄 Sync Widget Library
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Main Widget Form Builder Component */}
       <WidgetEnhancedFormBuilder />
